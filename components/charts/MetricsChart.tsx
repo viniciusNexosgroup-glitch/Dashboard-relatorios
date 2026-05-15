@@ -55,9 +55,9 @@ export function MetricsChart({ data }: Props) {
           axisLine={false}
         />
         <Tooltip
-          formatter={(value: number, name: string) => {
-            if (name === 'Investimento') return formatCurrency(value)
-            return formatNumber(value)
+          formatter={(value: any, name: any) => {
+            if (name === 'Investimento') return formatCurrency(Number(value))
+            return formatNumber(Number(value))
           }}
           contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
         />
