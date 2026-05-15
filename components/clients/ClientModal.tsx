@@ -20,6 +20,14 @@ interface MetaAccount {
   business: string | null
 }
 
+interface GoogleAccount {
+  id: string
+  formattedId: string
+  name: string
+  currency: string
+  status: string
+}
+
 interface WhatsappGroup {
   id: string
   name: string
@@ -53,11 +61,20 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [metaError, setMetaError] = useState('')
   const [selectedMeta, setSelectedMeta] = useState<Set<string>>(new Set())
 
+  // Google accounts
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
+  const [loadingGoogle, setLoadingGoogle] = useState(false)
+  const [googleError, setGoogleError] = useState('')
+  const [selectedGoogle, setSelectedGoogle] = useState<Set<string>>(new Set())
+
   const isEditing = !!client
 
   useEffect(() => {
     fetchGroups()
-    if (!isEditing) fetchMetaAccounts()
+    if (!isEditing) {
+      fetchMetaAccounts()
+      fetchGoogleAccounts()
+    }
   }, [])
 
   async function fetchGroups() {
@@ -72,6 +89,20 @@ export function ClientModal({ client, onClose, onSave }: Props) {
       setGroupsError('Erro ao buscar grupos')
     }
     setLoadingGroups(false)
+  }
+
+  async function fetchGoogleAccounts() {
+    setLoadingGoogle(true)
+    setGoogleError('')
+    try {
+      const res = await fetch('/api/google-ads/accounts')
+      const data = await res.json()
+      if (data.error && !data.accounts?.length) setGoogleError(data.error)
+      setGoogleAccounts(data.accounts || [])
+    } catch {
+      setGoogleError('Erro ao buscar contas')
+    }
+    setLoadingGoogle(false)
   }
 
   async function fetchMetaAccounts() {
@@ -104,6 +135,22 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     }
   }
 
+  function toggleGoogle(id: string) {
+    setSelectedGoogle((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function selectAllGoogle() {
+    if (selectedGoogle.size === googleAccounts.length) {
+      setSelectedGoogle(new Set())
+    } else {
+      setSelectedGoogle(new Set(googleAccounts.map((a) => a.id)))
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -118,9 +165,8 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     })
     const saved = await res.json()
 
-    // Vincular contas Meta selecionadas
-    if (!isEditing && saved.id && selectedMeta.size > 0) {
-      const token = '' // token vem do .env no backend
+    if (!isEditing && saved.id) {
+      // Vincular contas Meta selecionadas
       for (const accId of selectedMeta) {
         const acc = metaAccounts.find((a) => a.id === accId)
         if (!acc) continue
@@ -131,7 +177,24 @@ export function ClientModal({ client, onClose, onSave }: Props) {
             platform: 'META',
             accountId: acc.id,
             accountName: acc.name,
-            accessToken: process.env.NEXT_PUBLIC_META_USE_SYSTEM_TOKEN || '__system__',
+            accessToken: '__system__',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      // Vincular contas Google selecionadas
+      for (const accId of selectedGoogle) {
+        const acc = googleAccounts.find((a) => a.id === accId)
+        if (!acc) continue
+        await fetch('/api/ad-accounts', {
+          method: 'POST',
+          body: JSON.stringify({
+            clientId: saved.id,
+            platform: 'GOOGLE',
+            accountId: acc.id,
+            accountName: acc.name,
+            accessToken: '__system__',
+            refreshToken: '__system__',
           }),
           headers: { 'Content-Type': 'application/json' },
         })
@@ -338,6 +401,78 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 </div>
               )}
             </div>
+
+              {/* Contas Google Ads — só no cadastro novo */}
+              {!isEditing && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      🔴 Contas Google Ads
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      {googleAccounts.length > 0 && (
+                        <button type="button" onClick={selectAllGoogle} className="text-xs text-indigo-600 hover:underline">
+                          {selectedGoogle.size === googleAccounts.length ? 'Desmarcar todas' : 'Selecionar todas'}
+                        </button>
+                      )}
+                      <button type="button" onClick={fetchGoogleAccounts} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                        <RefreshCw className={`w-3 h-3 ${loadingGoogle ? 'animate-spin' : ''}`} /> Atualizar
+                      </button>
+                    </div>
+                  </div>
+
+                  {loadingGoogle ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Buscando contas do Google Ads...
+                    </div>
+                  ) : googleError ? (
+                    <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{googleError}</span>
+                    </div>
+                  ) : googleAccounts.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">Nenhuma conta encontrada.</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                      {googleAccounts.map((acc, i) => {
+                        const checked = selectedGoogle.has(acc.id)
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => toggleGoogle(acc.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                              i > 0 ? 'border-t border-gray-100' : ''
+                            } ${checked ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                          >
+                            {checked
+                              ? <CheckSquare className="w-4 h-4 text-red-600 shrink-0" />
+                              : <Square className="w-4 h-4 text-gray-300 shrink-0" />
+                            }
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{acc.name}</p>
+                              <p className="text-xs text-gray-400">{acc.formattedId} · {acc.currency}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                              acc.status === 'ENABLED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {acc.status === 'ENABLED' ? 'Ativa' : 'Pausada'}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {selectedGoogle.size > 0 && (
+                    <p className="text-xs text-red-600 mt-2 font-medium">
+                      {selectedGoogle.size} conta{selectedGoogle.size > 1 ? 's' : ''} selecionada{selectedGoogle.size > 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              )}
+
+            </div>{/* end p-6 space-y-5 */}
 
             {/* Footer */}
             <div className="flex gap-3 p-6 pt-0">

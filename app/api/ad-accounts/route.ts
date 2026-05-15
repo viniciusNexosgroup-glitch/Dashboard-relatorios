@@ -12,8 +12,15 @@ export async function POST(req: NextRequest) {
   // Se vier __system__, usa o token do .env
   const accessToken =
     body.accessToken === '__system__'
-      ? process.env.META_SYSTEM_USER_TOKEN || ''
+      ? body.platform === 'GOOGLE'
+        ? '__system__'
+        : process.env.META_SYSTEM_USER_TOKEN || ''
       : body.accessToken || ''
+
+  const refreshToken =
+    body.refreshToken === '__system__'
+      ? process.env.GOOGLE_REFRESH_TOKEN || ''
+      : body.refreshToken || null
 
   const account = await prisma.adAccount.create({
     data: {
@@ -22,7 +29,7 @@ export async function POST(req: NextRequest) {
       accountId: body.accountId,
       accountName: body.accountName,
       accessToken,
-      refreshToken: body.refreshToken || null,
+      refreshToken,
     },
   })
   return NextResponse.json(account)
