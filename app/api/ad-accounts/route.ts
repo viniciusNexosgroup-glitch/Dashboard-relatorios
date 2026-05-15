@@ -8,13 +8,20 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
+
+  // Se vier __system__, usa o token do .env
+  const accessToken =
+    body.accessToken === '__system__'
+      ? process.env.META_SYSTEM_USER_TOKEN || ''
+      : body.accessToken || ''
+
   const account = await prisma.adAccount.create({
     data: {
       clientId: body.clientId,
       platform: body.platform,
       accountId: body.accountId,
       accountName: body.accountName,
-      accessToken: body.accessToken || '',
+      accessToken,
       refreshToken: body.refreshToken || null,
     },
   })

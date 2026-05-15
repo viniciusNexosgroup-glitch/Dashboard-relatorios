@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Loader2, MessageSquare, RefreshCw } from 'lucide-react'
+import { X, Loader2, MessageSquare, RefreshCw, CheckSquare, Square, AlertCircle } from 'lucide-react'
 
 interface Client {
   id: string
@@ -12,12 +12,12 @@ interface Client {
   notes: string | null
 }
 
-interface AdAccountEntry {
-  platform: 'META' | 'GOOGLE'
-  accountId: string
-  accountName: string
-  accessToken: string
-  refreshToken: string
+interface MetaAccount {
+  id: string
+  name: string
+  status: number
+  currency: string
+  business: string | null
 }
 
 interface WhatsappGroup {
@@ -32,14 +32,6 @@ interface Props {
   onSave: () => void
 }
 
-const emptyAccount = (): AdAccountEntry => ({
-  platform: 'META',
-  accountId: '',
-  accountName: '',
-  accessToken: '',
-  refreshToken: '',
-})
-
 export function ClientModal({ client, onClose, onSave }: Props) {
   const [form, setForm] = useState({
     name: client?.name || '',
@@ -48,15 +40,24 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     whatsappGroup: client?.whatsappGroup || '',
     notes: client?.notes || '',
   })
-  const [accounts, setAccounts] = useState<AdAccountEntry[]>([emptyAccount()])
   const [loading, setLoading] = useState(false)
 
+  // WhatsApp groups
   const [groups, setGroups] = useState<WhatsappGroup[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [groupsError, setGroupsError] = useState('')
 
+  // Meta accounts
+  const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
+  const [loadingMeta, setLoadingMeta] = useState(false)
+  const [metaError, setMetaError] = useState('')
+  const [selectedMeta, setSelectedMeta] = useState<Set<string>>(new Set())
+
+  const isEditing = !!client
+
   useEffect(() => {
     fetchGroups()
+    if (!isEditing) fetchMetaAccounts()
   }, [])
 
   async function fetchGroups() {
@@ -65,9 +66,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     try {
       const res = await fetch('/api/whatsapp/groups')
       const data = await res.json()
-      if (data.error && !data.groups?.length) {
-        setGroupsError(data.error)
-      }
+      if (data.error && !data.groups?.length) setGroupsError(data.error)
       setGroups(data.groups || [])
     } catch {
       setGroupsError('Erro ao buscar grupos')
@@ -75,16 +74,34 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     setLoadingGroups(false)
   }
 
-  function addAccount() {
-    setAccounts([...accounts, emptyAccount()])
+  async function fetchMetaAccounts() {
+    setLoadingMeta(true)
+    setMetaError('')
+    try {
+      const res = await fetch('/api/meta-ads/accounts')
+      const data = await res.json()
+      if (data.error && !data.accounts?.length) setMetaError(data.error)
+      setMetaAccounts(data.accounts || [])
+    } catch {
+      setMetaError('Erro ao buscar contas')
+    }
+    setLoadingMeta(false)
   }
 
-  function removeAccount(i: number) {
-    setAccounts(accounts.filter((_, idx) => idx !== i))
+  function toggleMeta(id: string) {
+    setSelectedMeta((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
   }
 
-  function updateAccount(i: number, field: keyof AdAccountEntry, value: string) {
-    setAccounts(accounts.map((a, idx) => (idx === i ? { ...a, [field]: value } : a)))
+  function selectAllMeta() {
+    if (selectedMeta.size === metaAccounts.length) {
+      setSelectedMeta(new Set())
+    } else {
+      setSelectedMeta(new Set(metaAccounts.map((a) => a.id)))
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -101,13 +118,21 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     })
     const saved = await res.json()
 
-    // Save ad accounts for new clients
-    if (!client && saved.id) {
-      for (const acc of accounts) {
-        if (!acc.accountId || !acc.accountName) continue
+    // Vincular contas Meta selecionadas
+    if (!isEditing && saved.id && selectedMeta.size > 0) {
+      const token = '' // token vem do .env no backend
+      for (const accId of selectedMeta) {
+        const acc = metaAccounts.find((a) => a.id === accId)
+        if (!acc) continue
         await fetch('/api/ad-accounts', {
           method: 'POST',
-          body: JSON.stringify({ ...acc, clientId: saved.id }),
+          body: JSON.stringify({
+            clientId: saved.id,
+            platform: 'META',
+            accountId: acc.id,
+            accountName: acc.name,
+            accessToken: process.env.NEXT_PUBLIC_META_USE_SYSTEM_TOKEN || '__system__',
+          }),
           headers: { 'Content-Type': 'application/json' },
         })
       }
@@ -117,11 +142,16 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     onSave()
   }
 
-  const isEditing = !!client
+  const statusLabel = (s: number) =>
+    s === 1 ? 'Ativa' : s === 2 ? 'Desativada' : s === 3 ? 'Não confirmada' : 'Pausada'
+
+  const statusColor = (s: number) =>
+    s === 1 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl max-h-[90vh] flex flex-col">
+
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-semibold text-gray-800">
@@ -194,13 +224,8 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5" /> Grupo de WhatsApp
                   </h3>
-                  <button
-                    type="button"
-                    onClick={fetchGroups}
-                    className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${loadingGroups ? 'animate-spin' : ''}`} />
-                    Atualizar
+                  <button type="button" onClick={fetchGroups} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                    <RefreshCw className={`w-3 h-3 ${loadingGroups ? 'animate-spin' : ''}`} /> Atualizar
                   </button>
                 </div>
 
@@ -211,9 +236,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 ) : groupsError ? (
                   <div className="space-y-2">
                     <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                      ⚠ {groupsError === 'Evolution API não configurada'
-                        ? 'Configure a Evolution API no .env para carregar os grupos automaticamente.'
-                        : `Não foi possível carregar grupos: ${groupsError}`}
+                      ⚠ Evolution API não configurada — insira o ID manualmente.
                     </div>
                     <input
                       type="text"
@@ -224,16 +247,13 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     />
                   </div>
                 ) : groups.length === 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-400">Nenhum grupo encontrado na instância.</p>
-                    <input
-                      type="text"
-                      value={form.whatsappGroup}
-                      onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })}
-                      placeholder="55119999999-1234567890@g.us"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={form.whatsappGroup}
+                    onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })}
+                    placeholder="55119999999-1234567890@g.us"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
                 ) : (
                   <select
                     value={form.whatsappGroup}
@@ -250,110 +270,71 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 )}
               </div>
 
-              {/* Contas de anúncio — só no cadastro novo */}
+              {/* Contas Meta Ads — só no cadastro novo */}
               {!isEditing && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                      Contas de Anúncio
+                      📘 Contas Meta Ads
                     </h3>
-                    <button
-                      type="button"
-                      onClick={addAccount}
-                      className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-                    >
-                      <Plus className="w-3 h-3" /> Adicionar conta
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {metaAccounts.length > 0 && (
+                        <button type="button" onClick={selectAllMeta} className="text-xs text-indigo-600 hover:underline">
+                          {selectedMeta.size === metaAccounts.length ? 'Desmarcar todas' : 'Selecionar todas'}
+                        </button>
+                      )}
+                      <button type="button" onClick={fetchMetaAccounts} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                        <RefreshCw className={`w-3 h-3 ${loadingMeta ? 'animate-spin' : ''}`} /> Atualizar
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-3">
-                    {accounts.map((acc, i) => (
-                      <div key={i} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
-                        {accounts.length > 1 && (
+                  {loadingMeta ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Buscando contas do Meta Ads...
+                    </div>
+                  ) : metaError ? (
+                    <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{metaError}</span>
+                    </div>
+                  ) : metaAccounts.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">Nenhuma conta encontrada.</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                      {metaAccounts.map((acc, i) => {
+                        const checked = selectedMeta.has(acc.id)
+                        return (
                           <button
+                            key={acc.id}
                             type="button"
-                            onClick={() => removeAccount(i)}
-                            className="absolute top-3 right-3 text-gray-300 hover:text-red-400 transition-colors"
+                            onClick={() => toggleMeta(acc.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                              i > 0 ? 'border-t border-gray-100' : ''
+                            } ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {checked
+                              ? <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                              : <Square className="w-4 h-4 text-gray-300 shrink-0" />
+                            }
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{acc.name}</p>
+                              <p className="text-xs text-gray-400">{acc.id} {acc.business ? `· ${acc.business}` : ''}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${statusColor(acc.status)}`}>
+                              {statusLabel(acc.status)}
+                            </span>
                           </button>
-                        )}
+                        )
+                      })}
+                    </div>
+                  )}
 
-                        <div className="space-y-2.5">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Plataforma</label>
-                            <div className="flex gap-2">
-                              {(['META', 'GOOGLE'] as const).map((p) => (
-                                <button
-                                  key={p}
-                                  type="button"
-                                  onClick={() => updateAccount(i, 'platform', p)}
-                                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                                    acc.platform === p
-                                      ? p === 'META'
-                                        ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-red-600 text-white border-red-600'
-                                      : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
-                                  }`}
-                                >
-                                  {p === 'META' ? '📘 Meta Ads' : '🔴 Google Ads'}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
-                                {acc.platform === 'META' ? 'ID da Conta (act_...)' : 'ID do Cliente Google'}
-                              </label>
-                              <input
-                                type="text"
-                                value={acc.accountId}
-                                onChange={(e) => updateAccount(i, 'accountId', e.target.value)}
-                                placeholder={acc.platform === 'META' ? 'act_1234567890' : '123-456-7890'}
-                                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Nome da Conta</label>
-                              <input
-                                type="text"
-                                value={acc.accountName}
-                                onChange={(e) => updateAccount(i, 'accountName', e.target.value)}
-                                placeholder="Ex: Conta Principal"
-                                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              {acc.platform === 'META' ? 'Token de Acesso Meta' : 'Refresh Token Google'}
-                            </label>
-                            <input
-                              type="password"
-                              value={acc.platform === 'META' ? acc.accessToken : acc.refreshToken}
-                              onChange={(e) =>
-                                updateAccount(
-                                  i,
-                                  acc.platform === 'META' ? 'accessToken' : 'refreshToken',
-                                  e.target.value
-                                )
-                              }
-                              placeholder={acc.platform === 'META' ? 'EAAxxxxxxx...' : '1//0xxxxxxx...'}
-                              className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                            <p className="text-xs text-gray-400 mt-1">
-                              {acc.platform === 'META'
-                                ? 'Token de longa duração do Meta Business (60 dias)'
-                                : 'Gerado via Google OAuth Playground'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {selectedMeta.size > 0 && (
+                    <p className="text-xs text-indigo-600 mt-2 font-medium">
+                      {selectedMeta.size} conta{selectedMeta.size > 1 ? 's' : ''} selecionada{selectedMeta.size > 1 ? 's' : ''}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
