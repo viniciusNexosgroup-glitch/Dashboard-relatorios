@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          UserRole  @default(AGENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  reports       Report[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+}
+
+model Client {
+  id              String    @id @default(cuid())
+  name            String
+  company         String
+  phone           String
+  whatsappGroup   String?
+  notes           String?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  adAccounts      AdAccount[]
+  reports         Report[]
+  whatsappSends   WhatsappSend[]
+
+  @@map("clients")
+}
+
+model AdAccount {
+  id              String          @id @default(cuid())
+  clientId        String
+  platform        Platform
+  accountId       String
+  accountName     String
+  accessToken     String
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaigns       Campaign[]
+  syncLogs        SyncLog[]
+
+  @@unique([platform, accountId])
+  @@map("ad_accounts")
+}
+
+enum Platform {
+  META
+  GOOGLE
+}
+
+model Campaign {
+  id              String        @id @default(cuid())
+  adAccountId     String
+  externalId      String
+  name            String
+  status          String
+  objective       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  adAccount       AdAccount     @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  adSets          AdSet[]
+  dailyMetrics    DailyMetric[]
+
+  @@unique([adAccountId, externalId])
+  @@map("campaigns")
+}
+
+model AdSet {
+  id              String        @id @default(cuid())
+  campaignId      String
+  externalId      String
+  name            String
+  status          String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  campaign        Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads             Ad[]
+  dailyMetrics    DailyMetric[]
+
+  @@unique([campaignId, externalId])
+  @@map("ad_sets")
+}
+
+model Ad {
+  id              String        @id @default(cuid())
+  adSetId         String
+  externalId      String
+  name            String
+  status          String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  adSet           AdSet         @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  dailyMetrics    DailyMetric[]
+
+  @@unique([adSetId, externalId])
+  @@map("ads")
+}
+
+model DailyMetric {
+  id              String    @id @default(cuid())
+  campaignId      String?
+  adSetId         String?
+  adId            String?
+  date            DateTime  @db.Date
+  spend           Float     @default(0)
+  impressions     Int       @default(0)
+  reach           Int       @default(0)
+  clicks          Int       @default(0)
+  ctr             Float     @default(0)
+  cpc             Float     @default(0)
+  cpm             Float     @default(0)
+  leads           Int       @default(0)
+  conversions     Int       @default(0)
+  costPerLead     Float?
+  costPerConv     Float?
+  roas            Float?
+  frequency       Float?
+  convRate        Float?
+  createdAt       DateTime  @default(now())
+
+  campaign        Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet           AdSet?    @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  ad              Ad?       @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, date])
+  @@index([adSetId, date])
+  @@index([adId, date])
+  @@map("daily_metrics")
+}
+
+model Report {
+  id              String        @id @default(cuid())
+  clientId        String
+  userId          String?
+  title           String
+  periodStart     DateTime
+  periodEnd       DateTime
+  pdfUrl          String?
+  pdfPath         String?
+  status          ReportStatus  @default(GENERATING)
+  createdAt       DateTime      @default(now())
+
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user            User?         @relation(fields: [userId], references: [id])
+  whatsappSends   WhatsappSend[]
+
+  @@map("reports")
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  ERROR
+}
+
+model WhatsappSend {
+  id              String          @id @default(cuid())
+  clientId        String
+  reportId        String?
+  groupId         String
+  message         String
+  status          WhatsappStatus  @default(PENDING)
+  sentAt          DateTime?
+  errorMessage    String?
+  createdAt       DateTime        @default(now())
+
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  report          Report?         @relation(fields: [reportId], references: [id])
+
+  @@map("whatsapp_sends")
+}
+
+enum WhatsappStatus {
+  PENDING
+  SENT
+  ERROR
+  GROUP_NOT_CONFIGURED
+  ACCOUNT_DISCONNECTED
+}
+
+model SyncLog {
+  id              String      @id @default(cuid())
+  adAccountId     String
+  status          SyncStatus
+  recordsSynced   Int         @default(0)
+  errorMessage    String?
+  startedAt       DateTime    @default(now())
+  finishedAt      DateTime?
+
+  adAccount       AdAccount   @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@map("sync_logs")
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  ERROR
+}
+
+model AppSettings {
+  id              String    @id @default(cuid())
+  key             String    @unique
+  value           String
+  updatedAt       DateTime  @updatedAt
+
+  @@map("app_settings")
+}
