@@ -14,8 +14,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     data: {
       name: body.name,
       company: body.company,
-      phone: body.phone,
       whatsappGroup: body.whatsappGroup || null,
+      whatsappGroupName: body.whatsappGroupName || null,
       notes: body.notes || null,
     },
   })

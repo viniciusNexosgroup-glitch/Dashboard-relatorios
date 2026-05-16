@@ -86,10 +86,11 @@ export function ConfigView({ whatsappStatus }: Props) {
             </div>
           ))}
         </div>
-        <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg flex gap-2">
-          <Info className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-gray-500">
-            Configure um cron externo (Vercel Cron, Railway Cron, EasyCron) para chamar <code>/api/cron/sync</code> e <code>/api/cron/monthly-report</code> com o header <code>Authorization: Bearer CRON_SECRET</code>.
+        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex gap-2">
+          <Info className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-green-700">
+            ✓ Agendamentos rodam automaticamente em background enquanto o servidor estiver ligado (fuso de São Paulo).
+            O relatório mensal sincroniza todas as contas antes de enviar, garantindo dados atualizados.
           </p>
         </div>
       </div>

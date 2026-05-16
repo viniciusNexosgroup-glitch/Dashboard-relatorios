@@ -1,18 +1,20 @@
 'use client'
 
-import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
+import { formatCurrency, formatNumber } from '@/lib/utils'
 
 interface Campaign {
   name: string
   platform: string
   status: string
   spend: number
-  impressions: number
+  reach: number
   clicks: number
-  ctr: number
-  cpc: number
+  linkClicks: number
   leads: number
+  msgConversations: number
   conversions: number
+  resultCount: number
+  resultLabel: string
   roas: number | null
 }
 
@@ -32,47 +34,42 @@ export function CampaignTable({ campaigns }: Props) {
           <tr className="border-b border-gray-100">
             <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Campanha</th>
             <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plataforma</th>
-            <th className="text-left py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Invest.</th>
-            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Impressões</th>
+            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resultados</th>
+            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Custo/Result.</th>
             <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliques</th>
-            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">CTR</th>
-            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">CPC</th>
-            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Leads</th>
-            <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">ROAS</th>
+            <th className="text-right py-2 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Valor Usado</th>
+            <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Alcance</th>
           </tr>
         </thead>
         <tbody>
-          {campaigns.map((c, i) => (
-            <tr key={i} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-25'}`}>
-              <td className="py-2.5 pr-4 font-medium text-gray-800 max-w-xs truncate">{c.name}</td>
-              <td className="py-2.5 pr-4">
-                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                  c.platform === 'META'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-red-100 text-red-700'
-                }`}>
-                  {c.platform === 'META' ? 'Meta' : 'Google'}
-                </span>
-              </td>
-              <td className="py-2.5 pr-4">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  c.status === 'ACTIVE' || c.status === 'ENABLED'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {c.status === 'ACTIVE' || c.status === 'ENABLED' ? 'Ativa' : 'Pausada'}
-                </span>
-              </td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatCurrency(c.spend)}</td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatNumber(c.impressions)}</td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatNumber(c.clicks)}</td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatPercent(c.ctr)}</td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatCurrency(c.cpc)}</td>
-              <td className="py-2.5 pr-4 text-right text-gray-700">{formatNumber(c.leads)}</td>
-              <td className="py-2.5 text-right text-gray-700">{c.roas ? `${c.roas.toFixed(2)}x` : '—'}</td>
-            </tr>
-          ))}
+          {campaigns.map((c, i) => {
+            const costPerResult = c.resultCount > 0 ? c.spend / c.resultCount : null
+            return (
+              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <td className="py-2.5 pr-4 font-medium text-gray-800 max-w-xs truncate">{c.name}</td>
+                <td className="py-2.5 pr-4">
+                  <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${
+                    c.platform === 'META' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {c.platform === 'META' ? 'Meta' : 'Google'}
+                  </span>
+                </td>
+                <td className="py-2.5 pr-4 text-right">
+                  <p className="text-gray-800">{formatNumber(c.resultCount)}</p>
+                  {c.resultLabel && <p className="text-xs text-gray-400 mt-0.5">{c.resultLabel}</p>}
+                </td>
+                <td className="py-2.5 pr-4 text-right">
+                  <p className="text-gray-700">{costPerResult ? formatCurrency(costPerResult) : '—'}</p>
+                  {costPerResult && c.resultLabel && (
+                    <p className="text-xs text-gray-400 mt-0.5">por {c.resultLabel.toLowerCase()}</p>
+                  )}
+                </td>
+                <td className="py-2.5 pr-4 text-right text-gray-700">{formatNumber(c.clicks)}</td>
+                <td className="py-2.5 pr-4 text-right font-medium text-gray-800">{formatCurrency(c.spend)}</td>
+                <td className="py-2.5 text-right text-gray-700">{formatNumber(c.reach)}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

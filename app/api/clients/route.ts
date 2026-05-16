@@ -18,15 +18,19 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const client = await prisma.client.create({
-    data: {
-      name: body.name,
-      company: body.company,
-      phone: body.phone,
-      whatsappGroup: body.whatsappGroup || null,
-      notes: body.notes || null,
-    },
-  })
-  return NextResponse.json(client)
+  try {
+    const body = await req.json()
+    const client = await prisma.client.create({
+      data: {
+        name: body.name,
+        company: body.company,
+        whatsappGroup: body.whatsappGroup || null,
+        whatsappGroupName: body.whatsappGroupName || null,
+        notes: body.notes || null,
+      },
+    })
+    return NextResponse.json(client)
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }

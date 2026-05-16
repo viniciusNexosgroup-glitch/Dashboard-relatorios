@@ -2,16 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Building2, Phone, MessageSquare, Edit, Trash2, Link } from 'lucide-react'
+import { Plus, Building2, MessageSquare, Edit, Trash2 } from 'lucide-react'
 import { ClientModal } from './ClientModal'
-import { AdAccountModal } from './AdAccountModal'
 
 interface Client {
   id: string
   name: string
   company: string
-  phone: string
+  phone?: string | null
   whatsappGroup: string | null
+  whatsappGroupName: string | null
   notes: string | null
   active: boolean
   adAccounts: { id: string; platform: string; accountName: string; active: boolean }[]
@@ -22,23 +22,15 @@ interface Props {
   clients: Client[]
 }
 
-export function ClientsView({ clients: initial }: Props) {
+export function ClientsView({ clients }: Props) {
   const router = useRouter()
-  const [clients, setClients] = useState(initial)
   const [showModal, setShowModal] = useState(false)
-  const [showAccountModal, setShowAccountModal] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
 
   async function handleDelete(id: string) {
     if (!confirm('Apagar este cliente?')) return
     await fetch(`/api/clients/${id}`, { method: 'DELETE' })
     router.refresh()
-  }
-
-  function handleAddAccount(clientId: string) {
-    setSelectedClientId(clientId)
-    setShowAccountModal(true)
   }
 
   return (
@@ -89,14 +81,12 @@ export function ClientsView({ clients: initial }: Props) {
             </div>
 
             <div className="space-y-1.5 text-xs text-gray-600 mb-4">
-              <div className="flex items-center gap-2">
-                <Phone className="w-3 h-3 text-gray-400" />
-                {client.phone}
-              </div>
               {client.whatsappGroup && (
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="w-3 h-3 text-green-500" />
-                  <span className="text-green-700 font-medium">Grupo configurado</span>
+                  <MessageSquare className="w-3 h-3 text-green-500 shrink-0" />
+                  <span className="text-green-700 font-medium truncate">
+                    {client.whatsappGroupName || 'Grupo configurado'}
+                  </span>
                 </div>
               )}
             </div>
@@ -104,12 +94,6 @@ export function ClientsView({ clients: initial }: Props) {
             <div className="border-t border-gray-100 pt-3 mt-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-gray-500">Contas de anúncio</p>
-                <button
-                  onClick={() => handleAddAccount(client.id)}
-                  className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
-                >
-                  <Link className="w-3 h-3" /> Vincular
-                </button>
               </div>
               {client.adAccounts.length === 0 ? (
                 <p className="text-xs text-gray-400">Nenhuma conta vinculada</p>
@@ -151,13 +135,6 @@ export function ClientsView({ clients: initial }: Props) {
         />
       )}
 
-      {showAccountModal && (
-        <AdAccountModal
-          clientId={selectedClientId}
-          onClose={() => setShowAccountModal(false)}
-          onSave={() => { setShowAccountModal(false); router.refresh() }}
-        />
-      )}
     </div>
   )
 }

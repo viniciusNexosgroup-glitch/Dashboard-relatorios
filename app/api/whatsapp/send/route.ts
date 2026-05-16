@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getDateRange } from '@/lib/utils'
+import { getDateRange, formatDate } from '@/lib/utils'
 import { generateReportPDF } from '@/lib/pdf-generator'
 import { sendDocumentMessage, sendTextMessage } from '@/lib/evolution-api'
 
@@ -23,7 +23,16 @@ export async function POST(req: NextRequest) {
     where: { clientId },
     include: {
       campaigns: {
-        include: { dailyMetrics: { where: { date: { gte: start, lte: end } } } },
+        include: {
+          dailyMetrics: { where: { date: { gte: start, lte: end } } },
+          adSets: {
+            include: {
+              ads: {
+                include: { dailyMetrics: { where: { date: { gte: start, lte: end } } } },
+              },
+            },
+          },
+        },
       },
     },
   })
@@ -31,6 +40,7 @@ export async function POST(req: NextRequest) {
   let totalSpend = 0, totalLeads = 0, totalConversions = 0, totalClicks = 0, totalImpressions = 0
   let sumCtr = 0, sumCpc = 0, sumRoas = 0, roasCount = 0, count = 0
   const campaigns: any[] = []
+  const ads: any[] = []
 
   for (const account of adAccounts) {
     for (const campaign of account.campaigns) {
@@ -47,9 +57,18 @@ export async function POST(req: NextRequest) {
         count++; cnt++
       }
       if (cnt > 0) campaigns.push({ name: campaign.name, platform: account.platform, spend: cs, impressions: ci, clicks: cc, leads: cl, conversions: ccv, ctr: ctr / cnt, cpc: cpc / cnt, roas: rc > 0 ? roas / rc : null })
+
+      for (const adSet of (campaign as any).adSets || []) {
+        for (const ad of adSet.ads || []) {
+          let as = 0, ar = 0, ac = 0, al = 0, acv = 0
+          for (const m of ad.dailyMetrics) { as += m.spend; ar += m.reach; ac += m.clicks; al += m.leads; acv += m.conversions }
+          if (as > 0 || ar > 0) ads.push({ name: ad.name, platform: account.platform, campaignName: campaign.name, thumbnailUrl: ad.thumbnailUrl || null, spend: as, reach: ar, clicks: ac, leads: al, conversions: acv })
+        }
+      }
     }
   }
   campaigns.sort((a, b) => b.spend - a.spend)
+  ads.sort((a, b) => b.spend - a.spend)
 
   const pdfBuffer = await generateReportPDF({
     client: { name: client.name, company: client.company },
@@ -62,10 +81,11 @@ export async function POST(req: NextRequest) {
       avgRoas: roasCount > 0 ? sumRoas / roasCount : null,
     },
     campaigns,
+    ads,
   })
 
   const base64 = pdfBuffer.toString('base64')
-  const periodLabel = `${start.toLocaleDateString('pt-BR')} a ${end.toLocaleDateString('pt-BR')}`
+  const periodLabel = `${formatDate(start)} a ${formatDate(end)}`
   const filename = `relatorio-${client.company.replace(/\s/g, '-')}.pdf`
   const caption = `📊 *Relatório de Performance – ${client.company}*\n📅 Período: ${periodLabel}\n\nOlá! Segue o relatório de performance referente ao período selecionado. Qualquer dúvida, estou à disposição.`
 

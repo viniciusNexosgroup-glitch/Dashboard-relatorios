@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
 import { MetricsChart } from '@/components/charts/MetricsChart'
 import { CampaignTable } from '@/components/dashboard/CampaignTable'
+import { AdTable } from '@/components/dashboard/AdTable'
 import {
   DollarSign,
   MousePointerClick,
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   FileText,
   Send,
+  MessageSquare,
 } from 'lucide-react'
 
 interface Client {
@@ -25,6 +27,7 @@ interface Client {
 interface Props {
   clients: Client[]
   lastSync: string | null
+  lastSyncByClient?: Record<string, string>
 }
 
 const DATE_FILTERS = [
@@ -36,7 +39,7 @@ const DATE_FILTERS = [
   { label: 'Mês anterior', value: 'lastMonth' },
 ]
 
-export function DashboardView({ clients, lastSync }: Props) {
+export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Props) {
   const [selectedClient, setSelectedClient] = useState<string>('')
   const [dateFilter, setDateFilter] = useState('last30days')
   const [metrics, setMetrics] = useState<any>(null)
@@ -46,8 +49,27 @@ export function DashboardView({ clients, lastSync }: Props) {
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
+    // Always load existing data immediately
     if (selectedClient) fetchMetrics()
-  }, [selectedClient, dateFilter])
+
+    // Per-client staleness check: never synced OR last sync >30min ago
+    if (selectedClient) {
+      const clientLastSync = lastSyncByClient[selectedClient]
+      const lastSyncDate = clientLastSync ? new Date(clientLastSync) : null
+      const stale = !lastSyncDate || (Date.now() - lastSyncDate.getTime()) > 30 * 60 * 1000
+      if (stale) handleSync()
+    }
+  }, [selectedClient])
+
+  useEffect(() => {
+    if (selectedClient) fetchMetrics()
+  }, [dateFilter])
+
+  // Auto-sync every 30 minutes in background while page is open
+  useEffect(() => {
+    const interval = setInterval(() => handleSync(), 30 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [selectedClient])
 
   async function fetchMetrics() {
     if (!selectedClient) return
@@ -61,20 +83,26 @@ export function DashboardView({ clients, lastSync }: Props) {
   }
 
   async function handleSync() {
-    if (!selectedClient) return
+    if (syncing) return
     setSyncing(true)
-    await fetch('/api/meta-ads/sync', {
-      method: 'POST',
-      body: JSON.stringify({ clientId: selectedClient }),
-      headers: { 'Content-Type': 'application/json' },
-    })
-    await fetch('/api/google-ads/sync', {
-      method: 'POST',
-      body: JSON.stringify({ clientId: selectedClient }),
-      headers: { 'Content-Type': 'application/json' },
-    })
-    setSyncing(false)
-    fetchMetrics()
+    try {
+      const body = selectedClient ? { clientId: selectedClient } : {}
+      await fetch('/api/meta-ads/sync', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      await fetch('/api/google-ads/sync', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (selectedClient) fetchMetrics() // refresh after sync, non-blocking
+    } catch {
+      // sync failed silently — user can retry manually
+    } finally {
+      setSyncing(false)
+    }
   }
 
   async function handleGeneratePDF() {
@@ -119,11 +147,11 @@ export function DashboardView({ clients, lastSync }: Props) {
         { label: 'Investimento Total', value: formatCurrency(s.totalSpend), icon: DollarSign, color: 'bg-indigo-500' },
         { label: 'Impressões', value: formatNumber(s.totalImpressions), icon: Eye, color: 'bg-blue-500' },
         { label: 'Cliques', value: formatNumber(s.totalClicks), icon: MousePointerClick, color: 'bg-cyan-500' },
-        { label: 'Leads', value: formatNumber(s.totalLeads), icon: Users, color: 'bg-green-500' },
-        { label: 'Conversões', value: formatNumber(s.totalConversions), icon: TrendingUp, color: 'bg-purple-500' },
+        { label: 'Conversas por mensagem', value: formatNumber(s.totalMsgConv || 0), icon: MessageSquare, color: 'bg-green-500' },
+        { label: 'Alcance', value: formatNumber(s.totalReach || 0), icon: Users, color: 'bg-purple-500' },
         { label: 'CTR Médio', value: formatPercent(s.avgCtr), icon: MousePointerClick, color: 'bg-orange-500' },
         { label: 'CPC Médio', value: formatCurrency(s.avgCpc), icon: DollarSign, color: 'bg-rose-500' },
-        { label: 'Custo por Lead', value: s.avgCpl > 0 ? formatCurrency(s.avgCpl) : 'N/A', icon: Users, color: 'bg-teal-500' },
+        { label: 'Custo por conversa por mensagem', value: s.avgCostPerMsg > 0 ? formatCurrency(s.avgCostPerMsg) : 'N/A', icon: MessageSquare, color: 'bg-teal-500' },
       ]
     : []
 
@@ -142,11 +170,11 @@ export function DashboardView({ clients, lastSync }: Props) {
         <div className="flex gap-2">
           <button
             onClick={handleSync}
-            disabled={!selectedClient || syncing}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            {syncing ? 'Sincronizando...' : selectedClient ? 'Sincronizar' : 'Sincronizar Todos'}
           </button>
           <button
             onClick={handleGeneratePDF}
@@ -168,13 +196,13 @@ export function DashboardView({ clients, lastSync }: Props) {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap gap-4">
+      <div className="bg-gray-50 rounded-xl border border-gray-300 p-4 flex flex-wrap gap-4">
         <div className="flex-1 min-w-48">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Cliente</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Cliente</label>
           <select
             value={selectedClient}
             onChange={(e) => setSelectedClient(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 border-2 border-gray-400 rounded-lg text-sm font-medium text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
             <option value="">Selecione um cliente</option>
             {clients.map((c) => (
@@ -185,7 +213,7 @@ export function DashboardView({ clients, lastSync }: Props) {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Período</label>
+          <label className="block text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Período</label>
           <div className="flex gap-1">
             {DATE_FILTERS.map((f) => (
               <button
@@ -282,6 +310,17 @@ export function DashboardView({ clients, lastSync }: Props) {
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Campanhas</h3>
             <CampaignTable campaigns={metrics.campaigns || []} />
           </div>
+
+          {/* Ads Table */}
+          {(metrics.ads || []).length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-gray-700">Anúncios no Período</h3>
+                <span className="text-xs text-gray-400">{(metrics.ads || []).length} anúncios</span>
+              </div>
+              <AdTable ads={metrics.ads || []} />
+            </div>
+          )}
         </>
       )}
     </div>

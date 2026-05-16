@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+# Multi-stage build for Next.js 16 (App Router) + Prisma — production image.
+
+# ── Stage 1: install deps ─────────────────────────────────────────────
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci
+
+# ── Stage 2: build ───────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# ── Stage 3: production runner ───────────────────────────────────────
+FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat openssl tzdata
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV TZ=America/Sao_Paulo
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Non-root user for safety
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy standalone build (Next.js packs everything needed)
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Prisma engine + schema needed at runtime
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "server.js"]

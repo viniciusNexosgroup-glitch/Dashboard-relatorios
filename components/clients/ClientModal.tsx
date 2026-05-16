@@ -7,8 +7,8 @@ interface Client {
   id: string
   name: string
   company: string
-  phone: string
   whatsappGroup: string | null
+  whatsappGroupName: string | null
   notes: string | null
 }
 
@@ -46,8 +46,8 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [form, setForm] = useState({
     name: client?.name || '',
     company: client?.company || '',
-    phone: client?.phone || '',
     whatsappGroup: client?.whatsappGroup || '',
+    whatsappGroupName: client?.whatsappGroupName || '',
     notes: client?.notes || '',
   })
   const [loading, setLoading] = useState(false)
@@ -65,6 +65,8 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [loadingGoogle, setLoadingGoogle] = useState(false)
   const [googleError, setGoogleError] = useState('')
   const [selectedGoogle, setSelectedGoogle] = useState<Set<string>>(new Set())
+  const [metaSearch, setMetaSearch] = useState('')
+  const [googleSearch, setGoogleSearch] = useState('')
 
   useEffect(() => {
     fetchGroups()
@@ -199,23 +201,18 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Nome do responsável *</label>
                     <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="João Silva"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
                     <input type="text" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} required placeholder="Empresa Ltda"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp *</label>
-                  <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="11999999999"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
                   <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Preferências do cliente..." rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
                 </div>
               </div>
             </div>
@@ -242,12 +239,16 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   )}
                   <input type="text" value={form.whatsappGroup} onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })}
                     placeholder="55119999999-1234567890@g.us"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               ) : (
                 <div className="border border-gray-200 rounded-xl overflow-hidden max-h-44 overflow-y-auto">
                   {groups.map((g, i) => (
-                    <button key={g.id} type="button" onClick={() => setForm({ ...form, whatsappGroup: form.whatsappGroup === g.id ? '' : g.id })}
+                    <button key={g.id} type="button" onClick={() => setForm({
+                      ...form,
+                      whatsappGroup: form.whatsappGroup === g.id ? '' : g.id,
+                      whatsappGroupName: form.whatsappGroup === g.id ? '' : g.name,
+                    })}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${form.whatsappGroup === g.id ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
                       <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${form.whatsappGroup === g.id ? 'border-green-500 bg-green-500' : 'border-gray-300'}`}>
                         {form.whatsappGroup === g.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
@@ -262,9 +263,9 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   ))}
                 </div>
               )}
-              {form.whatsappGroup && groups.find(g => g.id === form.whatsappGroup) && (
+              {form.whatsappGroup && (groups.find(g => g.id === form.whatsappGroup) || form.whatsappGroupName) && (
                 <p className="text-xs text-green-600 mt-1.5 font-medium">
-                  ✓ {groups.find(g => g.id === form.whatsappGroup)?.name}
+                  ✓ {groups.find(g => g.id === form.whatsappGroup)?.name || form.whatsappGroupName}
                 </p>
               )}
             </div>
@@ -296,8 +297,12 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 ) : metaAccounts.length === 0 ? (
                   <p className="text-xs text-gray-400 py-2">Nenhuma conta encontrada.</p>
                 ) : (
+                  <>
+                  <input type="text" value={metaSearch} onChange={e => setMetaSearch(e.target.value)}
+                    placeholder="Pesquisar conta..."
+                    className="w-full px-3 py-1.5 mb-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {metaAccounts.map((acc, i) => (
+                    {metaAccounts.filter(a => a.name.toLowerCase().includes(metaSearch.toLowerCase()) || a.id.includes(metaSearch)).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleMeta(acc.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${selectedMeta.has(acc.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                         {selectedMeta.has(acc.id)
@@ -313,6 +318,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                       </button>
                     ))}
                   </div>
+                  </>
                 )}
                 {selectedMeta.size > 0 && (
                   <p className="text-xs text-indigo-600 mt-2 font-medium">{selectedMeta.size} conta(s) selecionada(s)</p>
@@ -347,8 +353,12 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 ) : googleAccounts.length === 0 ? (
                   <p className="text-xs text-gray-400 py-2">Nenhuma conta encontrada.</p>
                 ) : (
+                  <>
+                  <input type="text" value={googleSearch} onChange={e => setGoogleSearch(e.target.value)}
+                    placeholder="Pesquisar conta..."
+                    className="w-full px-3 py-1.5 mb-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {googleAccounts.map((acc, i) => (
+                    {googleAccounts.filter(a => a.name.toLowerCase().includes(googleSearch.toLowerCase()) || a.formattedId.includes(googleSearch)).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleGoogle(acc.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${selectedGoogle.has(acc.id) ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
                         {selectedGoogle.has(acc.id)
@@ -364,6 +374,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                       </button>
                     ))}
                   </div>
+                  </>
                 )}
                 {selectedGoogle.size > 0 && (
                   <p className="text-xs text-red-600 mt-2 font-medium">{selectedGoogle.size} conta(s) selecionada(s)</p>
