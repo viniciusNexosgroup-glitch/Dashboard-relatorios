@@ -44,7 +44,7 @@ export async function GET() {
     `
 
     const res = await axios.post(
-      `https://googleads.googleapis.com/v16/customers/${managerId}/googleAds:search`,
+      `https://googleads.googleapis.com/v20/customers/${managerId}/googleAds:search`,
       { query },
       {
         headers: {
@@ -74,10 +74,11 @@ export async function GET() {
 
     return NextResponse.json({ accounts })
   } catch (err: any) {
+    const status = err.response?.status
     const msg =
       err.response?.data?.error?.details?.[0]?.errors?.[0]?.message ||
       err.response?.data?.error?.message ||
       err.message
-    return NextResponse.json({ accounts: [], error: msg })
+    return NextResponse.json({ accounts: [], error: `${status ? `[${status}] ` : ''}${msg}` })
   }
 }

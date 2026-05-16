@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { prisma } from './prisma'
 
-const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v16'
+const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v20'
 
 export async function getGoogleAdsAccessToken(refreshToken: string): Promise<string> {
   const res = await axios.post('https://oauth2.googleapis.com/token', {

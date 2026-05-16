@@ -245,15 +245,27 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               ) : (
-                <select value={form.whatsappGroup} onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                  <option value="">Selecione um grupo...</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}{g.participants > 0 ? ` (${g.participants} participantes)` : ''}
-                    </option>
+                <div className="border border-gray-200 rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                  {groups.map((g, i) => (
+                    <button key={g.id} type="button" onClick={() => setForm({ ...form, whatsappGroup: form.whatsappGroup === g.id ? '' : g.id })}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${form.whatsappGroup === g.id ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${form.whatsappGroup === g.id ? 'border-green-500 bg-green-500' : 'border-gray-300'}`}>
+                        {form.whatsappGroup === g.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{g.name}</p>
+                      </div>
+                      {g.participants > 0 && (
+                        <span className="text-xs text-gray-400 shrink-0">{g.participants} membros</span>
+                      )}
+                    </button>
                   ))}
-                </select>
+                </div>
+              )}
+              {form.whatsappGroup && groups.find(g => g.id === form.whatsappGroup) && (
+                <p className="text-xs text-green-600 mt-1.5 font-medium">
+                  ✓ {groups.find(g => g.id === form.whatsappGroup)?.name}
+                </p>
               )}
             </div>
 
