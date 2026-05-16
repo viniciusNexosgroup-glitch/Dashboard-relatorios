@@ -103,6 +103,7 @@ interface ReportData {
     platform: string
     spend: number
     impressions: number
+    reach?: number
     clicks: number
     leads: number
     msgConversations?: number
@@ -227,52 +228,79 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
         )
       ),
 
-      // Campaigns Table
+      // Campaigns Table — mesmo layout do dashboard
       React.createElement(
         View,
         { style: styles.section },
-        React.createElement(Text, { style: styles.sectionTitle }, 'PRINCIPAIS CAMPANHAS'),
+        React.createElement(Text, { style: styles.sectionTitle }, 'CAMPANHAS'),
         React.createElement(
           View,
           { style: styles.table },
           React.createElement(
             View,
-            { style: styles.tableHeader },
-            React.createElement(Text, { style: { ...styles.th, flex: 2 } }, 'Campanha'),
-            React.createElement(Text, { style: styles.th }, 'Invest.'),
-            React.createElement(Text, { style: styles.th }, 'Cliques'),
-            React.createElement(Text, { style: { ...styles.th, flex: 1.5 } }, 'Resultados'),
-            React.createElement(Text, { style: { ...styles.th, flex: 1.2 } }, 'Custo/Result.'),
-            React.createElement(Text, { style: styles.th }, 'CTR')
+            { style: { flexDirection: 'row', padding: '4 8', backgroundColor: '#f1f5f9', marginBottom: 2 } },
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 3 } }, 'CAMPANHA'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.8 } }, 'PLATAFORMA'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1.4, textAlign: 'right' } }, 'RESULTADOS'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1.2, textAlign: 'right' } }, 'CUSTO/RES.'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.7, textAlign: 'right' } }, 'CLIQUES'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'VALOR'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'ALCANCE')
           ),
-          ...data.campaigns.slice(0, 12).map((c, i) => {
+          ...data.campaigns.map((c, i) => {
             const rc = c.resultCount ?? c.leads
             const rl = c.resultLabel || ''
             const cpr = rc > 0 ? c.spend / rc : null
+            const isMeta = c.platform === 'META'
             return React.createElement(
               View,
-              { style: i % 2 === 1 ? { ...styles.tableRow, ...styles.tableRowAlt } : styles.tableRow, key: i },
+              {
+                key: i,
+                wrap: false,
+                style: {
+                  flexDirection: 'row', alignItems: 'center',
+                  padding: '5 8', borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+                  ...(i % 2 === 1 ? { backgroundColor: '#f8fafc' } : {}),
+                },
+              },
               React.createElement(
-                View,
-                { style: { flex: 2 } },
-                React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b' } }, c.name.substring(0, 32)),
-                React.createElement(Text, { style: { fontSize: 7, color: '#94a3b8' } }, c.platform === 'META' ? 'Meta' : 'Google')
+                Text,
+                { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 3, paddingRight: 6 } },
+                c.name
               ),
-              React.createElement(Text, { style: { ...styles.td, fontFamily: 'Helvetica-Bold' } }, formatCurrency(c.spend)),
-              React.createElement(Text, { style: styles.td }, formatNumber(c.clicks)),
               React.createElement(
                 View,
-                { style: { flex: 1.5 } },
+                { style: { flex: 0.8 } },
+                React.createElement(
+                  Text,
+                  {
+                    style: {
+                      fontSize: 7, fontFamily: 'Helvetica-Bold',
+                      color: isMeta ? '#1d4ed8' : '#b91c1c',
+                      backgroundColor: isMeta ? '#dbeafe' : '#fee2e2',
+                      paddingTop: 2, paddingBottom: 2, paddingLeft: 6, paddingRight: 6,
+                      borderRadius: 8,
+                      alignSelf: 'flex-start',
+                    },
+                  },
+                  isMeta ? 'Meta' : 'Google'
+                )
+              ),
+              React.createElement(
+                View,
+                { style: { flex: 1.4, alignItems: 'flex-end' } },
                 React.createElement(Text, { style: { fontSize: 8, color: '#334155' } }, formatNumber(rc)),
                 rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, rl) : null
               ),
               React.createElement(
                 View,
-                { style: { flex: 1.2 } },
+                { style: { flex: 1.2, alignItems: 'flex-end' } },
                 React.createElement(Text, { style: { fontSize: 8, color: '#334155' } }, cpr ? formatCurrency(cpr) : '—'),
                 cpr && rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, `por ${rl.toLowerCase()}`) : null
               ),
-              React.createElement(Text, { style: styles.td }, formatPercent(c.ctr))
+              React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 0.7, textAlign: 'right' } }, formatNumber(c.clicks)),
+              React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 1, textAlign: 'right' } }, formatCurrency(c.spend)),
+              React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1, textAlign: 'right' } }, formatNumber((c as any).reach || 0))
             )
           })
         )

@@ -138,7 +138,7 @@ export async function GET(req: NextRequest) {
 
       for (const account of client.adAccounts) {
         for (const campaign of account.campaigns) {
-          let cs = 0, ci = 0, cc = 0, cLinkClicks = 0
+          let cs = 0, ci = 0, cReach = 0, cc = 0, cLinkClicks = 0
           let cl = 0, cMsg = 0, ccv = 0, cProfileVisits = 0, cLandingPageViews = 0
           let ctrSum = 0, cpcSum = 0, roas = 0, rc = 0, cnt = 0
 
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
             const msg = (m as any).msgConversations || 0
             totalSpend += m.spend; cs += m.spend
             totalImpressions += m.impressions; ci += m.impressions
-            totalReach += m.reach
+            totalReach += m.reach; cReach += m.reach
             totalClicks += m.clicks; cc += m.clicks
             totalLeads += m.leads; cl += m.leads
             totalMsgConv += msg; cMsg += msg
@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
             })
             campaigns.push({
               name: campaign.name, platform: account.platform, objective: campaign.objective,
-              spend: cs, impressions: ci, clicks: cc,
+              spend: cs, impressions: ci, reach: cReach, clicks: cc,
               leads: cl, msgConversations: cMsg, conversions: ccv,
               resultCount, resultLabel,
               ctr: cnt > 0 ? ctrSum / cnt : 0,
