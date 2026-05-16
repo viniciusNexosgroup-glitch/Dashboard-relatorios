@@ -104,6 +104,14 @@ export async function GET(req: NextRequest) {
 
   const statuses: any[] = []
 
+  // Randomized delay (60-120s) between sends to mimic human pacing and avoid WhatsApp throttling/ban
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const randomDelay = () => 60_000 + Math.floor(Math.random() * 60_000)
+
+  const eligibleClients = clients.filter((c) => c.whatsappGroup && c.adAccounts.length > 0)
+  console.log(`[monthly-report] enviando para ${eligibleClients.length} clientes elegiveis, intervalo 60-120s entre cada um`)
+
+  let sentCount = 0
   for (const client of clients) {
     if (!client.whatsappGroup) {
       statuses.push({ clientId: client.id, status: 'GROUP_NOT_CONFIGURED' })
@@ -247,6 +255,14 @@ export async function GET(req: NextRequest) {
       })
 
       statuses.push({ clientId: client.id, company: client.company, status: 'SENT' })
+      sentCount++
+
+      // Pause between sends to avoid WhatsApp ban — skip after last successful send
+      if (sentCount < eligibleClients.length) {
+        const wait = randomDelay()
+        console.log(`[monthly-report] enviado para ${client.company} (${sentCount}/${eligibleClients.length}). Aguardando ${Math.round(wait / 1000)}s antes do proximo...`)
+        await sleep(wait)
+      }
     } catch (err: any) {
       await prisma.whatsappSend.create({
         data: {
