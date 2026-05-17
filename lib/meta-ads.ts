@@ -322,6 +322,30 @@ export async function syncMetaAccount(adAccountId: string) {
       console.error('Ad sync error:', adErr.message)
     }
 
+    // ── 6. Snapshot dos financials da conta (saldo, gasto total, etc.) ──
+    try {
+      const finRes = await axios.get(`${META_API_BASE}/${accountExternalId}`, {
+        params: {
+          access_token: token,
+          fields: 'balance,amount_spent,currency,spend_cap,account_status,name',
+        },
+      })
+      const d = finRes.data
+      await prisma.adAccount.update({
+        where: { id: adAccountId },
+        data: {
+          balance: d.balance != null ? parseFloat(d.balance) / 100 : null, // Meta retorna em centavos
+          amountSpent: d.amount_spent != null ? parseFloat(d.amount_spent) / 100 : null,
+          currency: d.currency || null,
+          spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
+          accountStatus: d.account_status != null ? parseInt(d.account_status) : null,
+          balanceLastSync: new Date(),
+        },
+      })
+    } catch (finErr: any) {
+      console.error('Account financials sync error:', finErr.message)
+    }
+
     await prisma.syncLog.update({
       where: { id: syncLog.id },
       data: { status: 'SUCCESS', recordsSynced, finishedAt: new Date() },

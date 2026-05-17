@@ -10,11 +10,13 @@ import {
   Settings,
   TrendingUp,
   MessageSquare,
+  Wallet,
 } from 'lucide-react'
 
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clientes', label: 'Clientes', icon: Users },
+  { href: '/saldos', label: 'Saldos', icon: Wallet },
   { href: '/relatorios', label: 'Relatórios', icon: FileText },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ]

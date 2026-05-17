@@ -56,6 +56,13 @@ model AdAccount {
   refreshToken    String?
   tokenExpiresAt  DateTime?
   active          Boolean         @default(true)
+  // Financials snapshot — atualizado a cada sync
+  balance         Float?
+  amountSpent     Float?
+  currency        String?
+  spendCap        Float?
+  accountStatus   Int?
+  balanceLastSync DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
