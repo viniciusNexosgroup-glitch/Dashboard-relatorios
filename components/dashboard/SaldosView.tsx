@@ -50,11 +50,8 @@ export function SaldosView({ accounts }: Props) {
     if (refreshing) return
     setRefreshing(true)
     try {
-      await fetch('/api/meta-ads/sync', {
-        method: 'POST',
-        body: JSON.stringify({}),
-        headers: { 'Content-Type': 'application/json' },
-      })
+      // Endpoint leve: só atualiza saldo/funding (não faz sync de campanhas/anúncios)
+      await fetch('/api/meta-ads/refresh-balances', { method: 'POST' })
       router.refresh()
     } catch {}
     setRefreshing(false)

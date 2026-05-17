@@ -323,56 +323,9 @@ export async function syncMetaAccount(adAccountId: string) {
     }
 
     // ── 6. Snapshot dos financials da conta (saldo, gasto total, tipo de pagamento) ──
-    try {
-      const finRes = await axios.get(`${META_API_BASE}/${accountExternalId}`, {
-        params: {
-          access_token: token,
-          fields: 'balance,amount_spent,currency,spend_cap,account_status,name,funding_source_details',
-        },
-      })
-      const d = finRes.data
-      const ftCode = d.funding_source_details?.type
-      const ftDisplay = (d.funding_source_details?.display_string || '').toString()
-      const ftDisplayLower = ftDisplay.toLowerCase()
-      const balanceCents = d.balance != null ? parseFloat(d.balance) : 0
-
-      // Detecção de pré-paga: combina codigo numerico do Meta + keywords do display_string + presenca de balance > 0
-      // Codigos comuns: 16 = PREPAID, 1024 = BOLETO (BR), 3 = legado prepaid
-      const prepaidKeywords = ['prepaid', 'pre-paga', 'pré-paga', 'pre paga', 'boleto', 'pix', 'saldo', 'pre-pago', 'pré-pago']
-      const isPrepaidByKeyword = prepaidKeywords.some((k) => ftDisplayLower.includes(k))
-      const isPrepaidByCode = ftCode === 3 || ftCode === 16 || ftCode === 1024
-      const looksPrepaid = isPrepaidByCode || isPrepaidByKeyword || balanceCents > 0
-
-      const creditCardKeywords = ['visa', 'master', 'amex', 'american express', 'elo', 'hipercard', 'cartão', 'cartao', 'credit']
-      const isCreditByKeyword = creditCardKeywords.some((k) => ftDisplayLower.includes(k))
-      const isCreditByCode = ftCode === 1 || ftCode === 2
-
-      const fundingType = looksPrepaid
-        ? 'prepaid'
-        : (isCreditByKeyword || isCreditByCode)
-          ? 'credit_card'
-          : ftCode === 4
-            ? 'extended_credit'
-            : ftCode != null || ftDisplay
-              ? 'other'
-              : null
-
-      await prisma.adAccount.update({
-        where: { id: adAccountId },
-        data: {
-          balance: d.balance != null ? balanceCents / 100 : null, // Meta retorna em centavos
-          amountSpent: d.amount_spent != null ? parseFloat(d.amount_spent) / 100 : null,
-          currency: d.currency || null,
-          spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
-          accountStatus: d.account_status != null ? parseInt(d.account_status) : null,
-          fundingType,
-          fundingDisplay: ftDisplay || null,
-          balanceLastSync: new Date(),
-        },
-      })
-    } catch (finErr: any) {
-      console.error('Account financials sync error:', finErr.message)
-    }
+    await refreshAccountFinancials(adAccountId).catch((e) =>
+      console.error('Account financials sync error:', e.message)
+    )
 
     await prisma.syncLog.update({
       where: { id: syncLog.id },
@@ -387,6 +340,63 @@ export async function syncMetaAccount(adAccountId: string) {
     })
     throw error
   }
+}
+
+// Fast endpoint — refreshes ONLY the financial snapshot (balance, funding type, etc.)
+// Use this for the "Atualizar Saldos" button. ~1 API call per account = seconds total.
+export async function refreshAccountFinancials(adAccountId: string): Promise<void> {
+  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+  if (!account) throw new Error('Conta não encontrada')
+
+  const token =
+    account.accessToken === '__system__' || !account.accessToken
+      ? await getMetaAccessToken()
+      : account.accessToken
+
+  const finRes = await axios.get(`${META_API_BASE}/${account.accountId}`, {
+    params: {
+      access_token: token,
+      fields: 'balance,amount_spent,currency,spend_cap,account_status,name,funding_source_details',
+    },
+  })
+  const d = finRes.data
+  const ftCode = d.funding_source_details?.type
+  const ftDisplay = (d.funding_source_details?.display_string || '').toString()
+  const ftDisplayLower = ftDisplay.toLowerCase()
+  const balanceCents = d.balance != null ? parseFloat(d.balance) : 0
+
+  const prepaidKeywords = ['prepaid', 'pre-paga', 'pré-paga', 'pre paga', 'boleto', 'pix', 'saldo', 'pre-pago', 'pré-pago']
+  const isPrepaidByKeyword = prepaidKeywords.some((k) => ftDisplayLower.includes(k))
+  const isPrepaidByCode = ftCode === 3 || ftCode === 16 || ftCode === 1024
+  const looksPrepaid = isPrepaidByCode || isPrepaidByKeyword || balanceCents > 0
+
+  const creditCardKeywords = ['visa', 'master', 'amex', 'american express', 'elo', 'hipercard', 'cartão', 'cartao', 'credit']
+  const isCreditByKeyword = creditCardKeywords.some((k) => ftDisplayLower.includes(k))
+  const isCreditByCode = ftCode === 1 || ftCode === 2
+
+  const fundingType = looksPrepaid
+    ? 'prepaid'
+    : (isCreditByKeyword || isCreditByCode)
+      ? 'credit_card'
+      : ftCode === 4
+        ? 'extended_credit'
+        : ftCode != null || ftDisplay
+          ? 'other'
+          : null
+
+  await prisma.adAccount.update({
+    where: { id: adAccountId },
+    data: {
+      balance: d.balance != null ? balanceCents / 100 : null,
+      amountSpent: d.amount_spent != null ? parseFloat(d.amount_spent) / 100 : null,
+      currency: d.currency || null,
+      spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
+      accountStatus: d.account_status != null ? parseInt(d.account_status) : null,
+      fundingType,
+      fundingDisplay: ftDisplay || null,
+      balanceLastSync: new Date(),
+    },
+  })
 }
 
 export async function getMetaLongLivedToken(shortToken: string): Promise<string> {
