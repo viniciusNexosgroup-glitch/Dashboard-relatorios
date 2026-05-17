@@ -342,6 +342,16 @@ export async function syncMetaAccount(adAccountId: string) {
   }
 }
 
+// Parses "R$317,15" or "R$ 1.234,56" from a string into a number
+function parseBRBalance(text: string): number | null {
+  const match = text.match(/R?\$\s*([\d.]+,\d{2}|\d+\.\d{2}|\d+)/i)
+  if (!match) return null
+  // Brazilian format "1.234,56" → "1234.56"
+  const cleaned = match[1].replace(/\./g, '').replace(',', '.')
+  const value = parseFloat(cleaned)
+  return isNaN(value) ? null : value
+}
+
 // Fast endpoint — refreshes ONLY the financial snapshot (balance, funding type, etc.)
 // Use this for the "Atualizar Saldos" button. ~1 API call per account = seconds total.
 export async function refreshAccountFinancials(adAccountId: string): Promise<void> {
@@ -363,31 +373,45 @@ export async function refreshAccountFinancials(adAccountId: string): Promise<voi
   const ftCode = d.funding_source_details?.type
   const ftDisplay = (d.funding_source_details?.display_string || '').toString()
   const ftDisplayLower = ftDisplay.toLowerCase()
-  const balanceCents = d.balance != null ? parseFloat(d.balance) : 0
 
-  const prepaidKeywords = ['prepaid', 'pre-paga', 'pré-paga', 'pre paga', 'boleto', 'pix', 'saldo', 'pre-pago', 'pré-pago']
+  // Classificação: SÓ é pré-pago se o display_string deixar claro.
+  // Ignoramos "balance > 0" pq cartões de crédito tambem podem ter balance acumulado.
+  const prepaidKeywords = ['saldo', 'prepaid', 'pré-paga', 'pre-paga', 'pré-pago', 'pre-pago', 'boleto', 'pix']
   const isPrepaidByKeyword = prepaidKeywords.some((k) => ftDisplayLower.includes(k))
-  const isPrepaidByCode = ftCode === 3 || ftCode === 16 || ftCode === 1024
-  const looksPrepaid = isPrepaidByCode || isPrepaidByKeyword || balanceCents > 0
+  const isPrepaidByCode = ftCode === 16 || ftCode === 1024
 
-  const creditCardKeywords = ['visa', 'master', 'amex', 'american express', 'elo', 'hipercard', 'cartão', 'cartao', 'credit']
+  const creditCardKeywords = ['visa', 'master', 'amex', 'american express', 'elo', 'hipercard', 'cartão', 'cartao', 'discover', 'jcb', 'diners']
   const isCreditByKeyword = creditCardKeywords.some((k) => ftDisplayLower.includes(k))
   const isCreditByCode = ftCode === 1 || ftCode === 2
 
-  const fundingType = looksPrepaid
-    ? 'prepaid'
-    : (isCreditByKeyword || isCreditByCode)
+  // Credit card tem prioridade — se display tem "Mastercard" é cartão, mesmo se balance > 0
+  const fundingType =
+    (isCreditByKeyword || isCreditByCode)
       ? 'credit_card'
-      : ftCode === 4
-        ? 'extended_credit'
-        : ftCode != null || ftDisplay
-          ? 'other'
-          : null
+      : (isPrepaidByKeyword || isPrepaidByCode)
+        ? 'prepaid'
+        : ftCode === 4
+          ? 'extended_credit'
+          : ftCode != null || ftDisplay
+            ? 'other'
+            : null
+
+  // Saldo real: pra contas pré-pagas, prefere o valor parseado do display_string
+  // ("Saldo disponível (R$317,15 BRL)") que reflete o saldo atual.
+  // Fallback pra campo `balance` da API (que pode estar desatualizado).
+  let realBalance: number | null = null
+  if (fundingType === 'prepaid') {
+    const parsed = parseBRBalance(ftDisplay)
+    realBalance = parsed ?? (d.balance != null ? parseFloat(d.balance) / 100 : null)
+  } else {
+    // Cartão de crédito não tem saldo real — não monitora
+    realBalance = null
+  }
 
   await prisma.adAccount.update({
     where: { id: adAccountId },
     data: {
-      balance: d.balance != null ? balanceCents / 100 : null,
+      balance: realBalance,
       amountSpent: d.amount_spent != null ? parseFloat(d.amount_spent) / 100 : null,
       currency: d.currency || null,
       spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
