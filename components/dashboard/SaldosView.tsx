@@ -17,6 +17,7 @@ interface Account {
   currency: string | null
   accountStatus: number | null
   fundingType: string | null
+  fundingDisplay: string | null
   active: boolean
   balanceLastSync: string | null
 }
@@ -172,12 +173,17 @@ export function SaldosView({ accounts }: Props) {
                     </td>
                     <td className="py-3 px-4">
                       {a.fundingType ? (
-                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                          prepaid ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                        }`}>
-                          {!prepaid && <CreditCard className="w-3 h-3" />}
-                          {fLabel}
-                        </span>
+                        <div>
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                            prepaid ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                          }`}>
+                            {!prepaid && <CreditCard className="w-3 h-3" />}
+                            {fLabel}
+                          </span>
+                          {a.fundingDisplay && (
+                            <p className="text-xs text-gray-400 mt-1">{a.fundingDisplay}</p>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-400 italic">—</span>
                       )}

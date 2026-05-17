@@ -22,6 +22,7 @@ export default async function SaldosPage() {
         currency: a.currency,
         accountStatus: a.accountStatus,
         fundingType: a.fundingType,
+        fundingDisplay: a.fundingDisplay,
         active: a.active,
         balanceLastSync: a.balanceLastSync?.toISOString() ?? null,
       }))}

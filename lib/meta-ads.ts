@@ -331,27 +331,42 @@ export async function syncMetaAccount(adAccountId: string) {
         },
       })
       const d = finRes.data
-      // Meta's funding_source_details.type:
-      //   3 = prepaid (cartao pre-pago / boleto)
-      //   1 = credit_card
-      //   2 = extended_credit (linha de credito)
-      //   4 = paypal / outros
       const ftCode = d.funding_source_details?.type
-      const fundingType =
-        ftCode === 3 ? 'prepaid' :
-        ftCode === 1 ? 'credit_card' :
-        ftCode === 2 ? 'extended_credit' :
-        ftCode != null ? `other_${ftCode}` :
-        null
+      const ftDisplay = (d.funding_source_details?.display_string || '').toString()
+      const ftDisplayLower = ftDisplay.toLowerCase()
+      const balanceCents = d.balance != null ? parseFloat(d.balance) : 0
+
+      // Detecção de pré-paga: combina codigo numerico do Meta + keywords do display_string + presenca de balance > 0
+      // Codigos comuns: 16 = PREPAID, 1024 = BOLETO (BR), 3 = legado prepaid
+      const prepaidKeywords = ['prepaid', 'pre-paga', 'pré-paga', 'pre paga', 'boleto', 'pix', 'saldo', 'pre-pago', 'pré-pago']
+      const isPrepaidByKeyword = prepaidKeywords.some((k) => ftDisplayLower.includes(k))
+      const isPrepaidByCode = ftCode === 3 || ftCode === 16 || ftCode === 1024
+      const looksPrepaid = isPrepaidByCode || isPrepaidByKeyword || balanceCents > 0
+
+      const creditCardKeywords = ['visa', 'master', 'amex', 'american express', 'elo', 'hipercard', 'cartão', 'cartao', 'credit']
+      const isCreditByKeyword = creditCardKeywords.some((k) => ftDisplayLower.includes(k))
+      const isCreditByCode = ftCode === 1 || ftCode === 2
+
+      const fundingType = looksPrepaid
+        ? 'prepaid'
+        : (isCreditByKeyword || isCreditByCode)
+          ? 'credit_card'
+          : ftCode === 4
+            ? 'extended_credit'
+            : ftCode != null || ftDisplay
+              ? 'other'
+              : null
+
       await prisma.adAccount.update({
         where: { id: adAccountId },
         data: {
-          balance: d.balance != null ? parseFloat(d.balance) / 100 : null, // Meta retorna em centavos
+          balance: d.balance != null ? balanceCents / 100 : null, // Meta retorna em centavos
           amountSpent: d.amount_spent != null ? parseFloat(d.amount_spent) / 100 : null,
           currency: d.currency || null,
           spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
           accountStatus: d.account_status != null ? parseInt(d.account_status) : null,
           fundingType,
+          fundingDisplay: ftDisplay || null,
           balanceLastSync: new Date(),
         },
       })

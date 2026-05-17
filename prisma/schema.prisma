@@ -63,6 +63,7 @@ model AdAccount {
   spendCap        Float?
   accountStatus   Int?
   fundingType     String?   // "prepaid", "credit_card", "extended_credit", etc.
+  fundingDisplay  String?   // texto bruto do meio de pagamento (ex: "Visa **** 1234", "Boleto", "Saldo")
   balanceLastSync DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
