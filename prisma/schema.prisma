@@ -62,6 +62,7 @@ model AdAccount {
   currency        String?
   spendCap        Float?
   accountStatus   Int?
+  fundingType     String?   // "prepaid", "credit_card", "extended_credit", etc.
   balanceLastSync DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

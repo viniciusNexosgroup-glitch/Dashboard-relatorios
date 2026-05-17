@@ -322,15 +322,27 @@ export async function syncMetaAccount(adAccountId: string) {
       console.error('Ad sync error:', adErr.message)
     }
 
-    // ── 6. Snapshot dos financials da conta (saldo, gasto total, etc.) ──
+    // ── 6. Snapshot dos financials da conta (saldo, gasto total, tipo de pagamento) ──
     try {
       const finRes = await axios.get(`${META_API_BASE}/${accountExternalId}`, {
         params: {
           access_token: token,
-          fields: 'balance,amount_spent,currency,spend_cap,account_status,name',
+          fields: 'balance,amount_spent,currency,spend_cap,account_status,name,funding_source_details',
         },
       })
       const d = finRes.data
+      // Meta's funding_source_details.type:
+      //   3 = prepaid (cartao pre-pago / boleto)
+      //   1 = credit_card
+      //   2 = extended_credit (linha de credito)
+      //   4 = paypal / outros
+      const ftCode = d.funding_source_details?.type
+      const fundingType =
+        ftCode === 3 ? 'prepaid' :
+        ftCode === 1 ? 'credit_card' :
+        ftCode === 2 ? 'extended_credit' :
+        ftCode != null ? `other_${ftCode}` :
+        null
       await prisma.adAccount.update({
         where: { id: adAccountId },
         data: {
@@ -339,6 +351,7 @@ export async function syncMetaAccount(adAccountId: string) {
           currency: d.currency || null,
           spendCap: d.spend_cap != null ? parseFloat(d.spend_cap) / 100 : null,
           accountStatus: d.account_status != null ? parseInt(d.account_status) : null,
+          fundingType,
           balanceLastSync: new Date(),
         },
       })

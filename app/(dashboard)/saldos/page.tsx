@@ -21,6 +21,7 @@ export default async function SaldosPage() {
         spendCap: a.spendCap,
         currency: a.currency,
         accountStatus: a.accountStatus,
+        fundingType: a.fundingType,
         active: a.active,
         balanceLastSync: a.balanceLastSync?.toISOString() ?? null,
       }))}
