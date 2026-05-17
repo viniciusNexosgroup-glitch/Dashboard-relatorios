@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Wallet, RefreshCw, AlertTriangle, CheckCircle2, CreditCard } from 'lucide-react'
+import { RefreshCw, AlertTriangle, CheckCircle2, CreditCard } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface Account {
@@ -59,11 +59,22 @@ export function SaldosView({ accounts }: Props) {
     setRefreshing(false)
   }
 
-  // Soma e contagem só consideram contas pré-pagas (postpaid não tem saldo real)
-  const prepaidAccounts = accounts.filter((a) => isPrepaid(a.fundingType))
-  const totalBalance = prepaidAccounts.reduce((s, a) => s + (a.balance || 0), 0)
-  const totalSpent = accounts.reduce((s, a) => s + (a.amountSpent || 0), 0)
-  const lowBalanceCount = prepaidAccounts.filter((a) => (a.balance || 0) < LOW_BALANCE_THRESHOLD).length
+  // Ordenação: saldo baixo (vermelho) primeiro, depois pré-pagas OK, depois outras
+  const sorted = [...accounts].sort((a, b) => {
+    const aLow = isPrepaid(a.fundingType) && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!a.balanceLastSync
+    const bLow = isPrepaid(b.fundingType) && (b.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!b.balanceLastSync
+    if (aLow && !bLow) return -1
+    if (!aLow && bLow) return 1
+    const aPre = isPrepaid(a.fundingType)
+    const bPre = isPrepaid(b.fundingType)
+    if (aPre && !bPre) return -1
+    if (!aPre && bPre) return 1
+    return (a.balance ?? 0) - (b.balance ?? 0)
+  })
+
+  const lowBalanceAccounts = accounts.filter(
+    (a) => isPrepaid(a.fundingType) && !!a.balanceLastSync && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD
+  )
 
   return (
     <div className="space-y-6">
@@ -71,7 +82,7 @@ export function SaldosView({ accounts }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Saldos das Contas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {accounts.length} contas Meta · {prepaidAccounts.length} pré-pagas · atualizadas a cada sincronização
+            Monitora contas pré-pagas para avisar clientes quando precisam adicionar saldo
           </p>
         </div>
         <button
@@ -84,40 +95,37 @@ export function SaldosView({ accounts }: Props) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-500 font-medium">Saldo Total (pré-pagas)</p>
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-              <Wallet className="w-4 h-4 text-white" />
-            </div>
+      {/* Banner de alerta */}
+      {lowBalanceAccounts.length > 0 ? (
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-red-500 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-white" />
           </div>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(totalBalance)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-500 font-medium">Total Gasto (lifetime)</p>
-            <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4 text-white" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(totalSpent)}</p>
-        </div>
-        <div className={`rounded-xl border p-4 ${lowBalanceCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <p className={`text-xs font-medium ${lowBalanceCount > 0 ? 'text-red-700' : 'text-gray-500'}`}>
-              Pré-pagas com saldo baixo
+          <div className="flex-1">
+            <h3 className="font-bold text-red-800 text-base">
+              {lowBalanceAccounts.length} {lowBalanceAccounts.length === 1 ? 'conta precisa' : 'contas precisam'} de recarga
+            </h3>
+            <p className="text-sm text-red-700 mt-1">
+              {lowBalanceAccounts.length === 1 ? 'A conta abaixo está' : 'As contas abaixo estão'} com saldo menor que {formatCurrency(LOW_BALANCE_THRESHOLD)}.
+              Avise {lowBalanceAccounts.length === 1 ? 'o cliente para adicionar saldo' : 'os clientes para adicionarem saldo'} antes que os anúncios pausem.
             </p>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${lowBalanceCount > 0 ? 'bg-red-500' : 'bg-gray-300'}`}>
-              <AlertTriangle className="w-4 h-4 text-white" />
-            </div>
           </div>
-          <p className={`text-xl font-bold ${lowBalanceCount > 0 ? 'text-red-700' : 'text-gray-900'}`}>
-            {lowBalanceCount} abaixo de {formatCurrency(LOW_BALANCE_THRESHOLD)}
-          </p>
         </div>
-      </div>
+      ) : (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-bold text-green-800 text-base">Tudo certo</h3>
+            <p className="text-sm text-green-700 mt-0.5">
+              Nenhuma conta pré-paga com saldo abaixo de {formatCurrency(LOW_BALANCE_THRESHOLD)}.
+            </p>
+          </div>
+        </div>
+      )}
 
+      {/* Tabela */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -128,26 +136,26 @@ export function SaldosView({ accounts }: Props) {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Pagamento</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Status</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Saldo</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total Gasto</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Limite de Gasto</th>
               </tr>
             </thead>
             <tbody>
               {accounts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center text-gray-400 py-8">
-                    Nenhuma conta Meta vinculada. Vincule contas em <strong>Clientes</strong> e clique em <strong>Atualizar Saldos</strong>.
+                  <td colSpan={5} className="text-center text-gray-400 py-8">
+                    Nenhuma conta Meta vinculada.
                   </td>
                 </tr>
               )}
-              {accounts.map((a) => {
+              {sorted.map((a) => {
                 const prepaid = isPrepaid(a.fundingType)
                 const balance = a.balance ?? 0
-                const isLow = prepaid && balance < LOW_BALANCE_THRESHOLD
-                const hasSync = !!a.balanceLastSync
+                const isLow = prepaid && !!a.balanceLastSync && balance < LOW_BALANCE_THRESHOLD
                 const fLabel = a.fundingType ? fundingLabel[a.fundingType] || 'Outro' : '—'
                 return (
-                  <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={a.id}
+                    className={`border-b border-gray-50 transition-colors ${isLow ? 'bg-red-50/40 hover:bg-red-50' : 'hover:bg-gray-50'}`}
+                  >
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-800">{a.accountName}</p>
                       <p className="text-xs text-gray-400 font-mono">{a.accountId}</p>
@@ -180,7 +188,7 @@ export function SaldosView({ accounts }: Props) {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {!hasSync ? (
+                      {!a.balanceLastSync ? (
                         <span className="text-xs text-gray-400 italic">não sincronizado</span>
                       ) : prepaid ? (
                         <p className={`font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
@@ -189,12 +197,6 @@ export function SaldosView({ accounts }: Props) {
                       ) : (
                         <span className="text-xs text-gray-400 italic" title="Pós-pago não usa saldo">N/A</span>
                       )}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-700">
-                      {a.amountSpent != null ? formatCurrency(a.amountSpent) : '—'}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-700">
-                      {a.spendCap != null && a.spendCap > 0 ? formatCurrency(a.spendCap) : '—'}
                     </td>
                   </tr>
                 )
@@ -205,9 +207,7 @@ export function SaldosView({ accounts }: Props) {
       </div>
 
       <p className="text-xs text-gray-500 text-center">
-        ⚠️ Apenas contas <strong>pré-pagas</strong> têm saldo monitorado. Saldos abaixo de <strong>{formatCurrency(LOW_BALANCE_THRESHOLD)}</strong> ficam em vermelho.
-        Contas pós-pagas (cartão / linha de crédito) cobram automaticamente e não exibem saldo.
-        Atualização automática nos horários do cron (08:00, 14:00, 20:00).
+        Apenas contas <strong>pré-pagas</strong> têm saldo monitorado. Atualização automática nos horários do cron (08:00, 14:00, 20:00).
       </p>
     </div>
   )
