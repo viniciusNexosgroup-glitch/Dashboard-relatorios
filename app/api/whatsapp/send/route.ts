@@ -4,8 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDateRange, formatDate } from '@/lib/utils'
 import { generateReportPDF } from '@/lib/pdf-generator'
-import { sendDocumentMessage, sendTextMessage } from '@/lib/evolution-api'
+import { sendDocumentMessage } from '@/lib/evolution-api'
 import { whatsappSendSchema, parseJson } from '@/lib/validators'
+import { buildReportData } from '@/lib/report-builder'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -16,76 +17,16 @@ export async function POST(req: NextRequest) {
   const { clientId, period } = parsed.data
   const { start, end } = getDateRange(period || 'last30days')
 
+  // Carrega cliente + valida WhatsApp
   const client = await prisma.client.findUnique({ where: { id: clientId } })
   if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   if (!client.whatsappGroup)
     return NextResponse.json({ error: 'Grupo de WhatsApp não configurado' }, { status: 400 })
 
-  // Fetch data and generate PDF
-  const adAccounts = await prisma.adAccount.findMany({
-    where: { clientId },
-    include: {
-      campaigns: {
-        include: {
-          dailyMetrics: { where: { date: { gte: start, lte: end } } },
-          adSets: {
-            include: {
-              ads: {
-                include: { dailyMetrics: { where: { date: { gte: start, lte: end } } } },
-              },
-            },
-          },
-        },
-      },
-    },
-  })
+  // Usa MESMA lógica do /api/reports/generate — 1 só fonte da verdade pro PDF
+  const reportData = await buildReportData({ clientId, start, end })
 
-  let totalSpend = 0, totalLeads = 0, totalConversions = 0, totalClicks = 0, totalImpressions = 0
-  let sumCtr = 0, sumCpc = 0, sumRoas = 0, roasCount = 0, count = 0
-  const campaigns: any[] = []
-  const ads: any[] = []
-
-  for (const account of adAccounts) {
-    for (const campaign of account.campaigns) {
-      let cs = 0, cc = 0, cl = 0, ccv = 0, ctr = 0, cpc = 0, roas = 0, rc = 0, cnt = 0, ci = 0
-      for (const m of campaign.dailyMetrics) {
-        totalSpend += m.spend; cs += m.spend
-        totalImpressions += m.impressions; ci += m.impressions
-        totalClicks += m.clicks; cc += m.clicks
-        totalLeads += m.leads; cl += m.leads
-        totalConversions += m.conversions; ccv += m.conversions
-        sumCtr += m.ctr; ctr += m.ctr
-        sumCpc += m.cpc; cpc += m.cpc
-        if (m.roas) { sumRoas += m.roas; roas += m.roas; roasCount++; rc++ }
-        count++; cnt++
-      }
-      if (cnt > 0) campaigns.push({ name: campaign.name, platform: account.platform, spend: cs, impressions: ci, clicks: cc, leads: cl, conversions: ccv, ctr: ctr / cnt, cpc: cpc / cnt, roas: rc > 0 ? roas / rc : null })
-
-      for (const adSet of (campaign as any).adSets || []) {
-        for (const ad of adSet.ads || []) {
-          let as = 0, ar = 0, ac = 0, al = 0, acv = 0
-          for (const m of ad.dailyMetrics) { as += m.spend; ar += m.reach; ac += m.clicks; al += m.leads; acv += m.conversions }
-          if (as > 0 || ar > 0) ads.push({ name: ad.name, platform: account.platform, campaignName: campaign.name, thumbnailUrl: ad.thumbnailUrl || null, spend: as, reach: ar, clicks: ac, leads: al, conversions: acv })
-        }
-      }
-    }
-  }
-  campaigns.sort((a, b) => b.spend - a.spend)
-  ads.sort((a, b) => b.spend - a.spend)
-
-  const pdfBuffer = await generateReportPDF({
-    client: { name: client.name, company: client.company },
-    period: { start, end },
-    summary: {
-      totalSpend, totalImpressions, totalClicks, totalLeads, totalConversions,
-      avgCtr: count > 0 ? sumCtr / count : 0,
-      avgCpc: count > 0 ? sumCpc / count : 0,
-      avgCpl: totalLeads > 0 ? totalSpend / totalLeads : 0,
-      avgRoas: roasCount > 0 ? sumRoas / roasCount : null,
-    },
-    campaigns,
-    ads,
-  })
+  const pdfBuffer = await generateReportPDF(reportData)
 
   const base64 = pdfBuffer.toString('base64')
   const periodLabel = `${formatDate(start)} a ${formatDate(end)}`
@@ -104,8 +45,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // Tenta enviar; registra status correto independente de sucesso ou falha,
-  // pra ficar visível no Histórico de Envios.
+  // Tenta enviar; registra status no histórico independente de sucesso/falha
   try {
     await sendDocumentMessage(client.whatsappGroup, base64, filename, caption)
     await prisma.whatsappSend.create({
