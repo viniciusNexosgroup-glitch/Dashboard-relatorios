@@ -61,7 +61,9 @@ export function MetricsChart({ data }: Props) {
             if (name === 'Investimento' || name === 'Custo por conversa') return formatCurrency(Number(value))
             return formatNumber(Number(value))
           }}
-          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, backgroundColor: '#ffffff' }}
+          labelStyle={{ color: '#1e293b', fontWeight: 600, marginBottom: 4 }}
+          itemStyle={{ padding: 0 }}
         />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar yAxisId="left" dataKey="spend" name="Investimento" fill="#6366f1" opacity={0.8} radius={[4, 4, 0, 0]} />
