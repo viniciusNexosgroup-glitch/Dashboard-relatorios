@@ -42,15 +42,25 @@ export async function GET(req: NextRequest) {
 
     groups.sort((a, b) => a.name.localeCompare(b.name))
 
-    // Atualiza cache
-    cache = { data: groups, at: now }
+    // Só cacheia se realmente tiver grupos — resposta vazia provavelmente é problema
+    // temporário da Evolution API e não deve travar o cache em []
+    if (groups.length > 0) {
+      cache = { data: groups, at: now }
+    }
 
     return NextResponse.json({ groups, cached: false })
   } catch (err: any) {
+    console.error('[whatsapp/groups] Evolution API error:', err.message)
     // Em caso de erro, devolve cache stale se existir (degradação suave)
-    if (cache) {
+    if (cache && cache.data.length > 0) {
       return NextResponse.json({ groups: cache.data, cached: true, stale: true, error: err.message })
     }
     return NextResponse.json({ groups: [], error: err.message })
   }
+}
+
+// Endpoint pra forçar limpeza do cache (em caso de cache corrompido)
+export async function DELETE() {
+  cache = null
+  return NextResponse.json({ ok: true, message: 'Cache de grupos limpo' })
 }
