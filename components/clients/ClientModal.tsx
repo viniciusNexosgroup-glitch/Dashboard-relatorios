@@ -77,11 +77,11 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     }
   }, [])
 
-  async function fetchGroups() {
+  async function fetchGroups(force = false) {
     setLoadingGroups(true)
     setGroupsError('')
     try {
-      const res = await fetch('/api/whatsapp/groups')
+      const res = await fetch(`/api/whatsapp/groups${force ? '?force=1' : ''}`)
       const data = await res.json()
       if (data.error && !data.groups?.length) setGroupsError(data.error)
       setGroups(data.groups || [])
@@ -223,7 +223,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
                   <MessageSquare className="w-3.5 h-3.5" /> Grupo de WhatsApp
                 </h3>
-                <button type="button" onClick={fetchGroups} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                <button type="button" onClick={() => fetchGroups(true)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
                   <RefreshCw className={`w-3 h-3 ${loadingGroups ? 'animate-spin' : ''}`} /> Atualizar
                 </button>
               </div>
