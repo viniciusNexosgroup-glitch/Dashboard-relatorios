@@ -5,53 +5,9 @@ import { sendDocumentMessage } from '@/lib/evolution-api'
 import { syncMetaAccount } from '@/lib/meta-ads'
 import { syncGoogleAccount } from '@/lib/google-ads'
 import { formatDate, getDateRange } from '@/lib/utils'
+import { getResultByObjective } from '@/lib/result-by-objective'
 
 export const maxDuration = 300
-
-type ResultMetrics = {
-  leads: number
-  msgConv: number
-  conversions: number
-  profileVisits: number
-  landingPageViews: number
-  linkClicks: number
-}
-
-function getResultByObjective(
-  objective: string | null | undefined,
-  m: ResultMetrics
-): { count: number; label: string } {
-  const obj = (objective || '').toUpperCase()
-  if (obj === 'MESSAGES' || obj === 'OUTCOME_MESSAGES')
-    return { count: m.msgConv, label: 'Conversas por mensagem' }
-  if (obj === 'OUTCOME_ENGAGEMENT' || obj === 'POST_ENGAGEMENT' || obj === 'PAGE_LIKES' || obj === 'ENGAGEMENT') {
-    if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-    return { count: 0, label: 'Engajamento' }
-  }
-  if (obj === 'LEAD_GENERATION' || obj === 'OUTCOME_LEADS')
-    return { count: m.leads, label: 'Leads' }
-  if (obj === 'LINK_CLICKS' || obj === 'TRAFFIC' || obj === 'OUTCOME_TRAFFIC') {
-    if (m.landingPageViews > 0) return { count: m.landingPageViews, label: 'Visitas à pág. de destino' }
-    return { count: m.linkClicks, label: 'Cliques no link' }
-  }
-  if (obj === 'CONVERSIONS' || obj === 'OUTCOME_SALES' || obj === 'PRODUCT_CATALOG_SALES' || obj === 'CATALOG_SALES') {
-    if (m.conversions > 0) return { count: m.conversions, label: 'Conversões' }
-    if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-    return { count: 0, label: 'Conversões' }
-  }
-  if (obj === 'REACH' || obj === 'BRAND_AWARENESS' || obj === 'OUTCOME_AWARENESS') {
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-    return { count: 0, label: 'Alcance' }
-  }
-  if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-  if (m.conversions > 0) return { count: m.conversions, label: 'Conversões' }
-  if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-  if (m.landingPageViews > 0) return { count: m.landingPageViews, label: 'Visitas à pág. de destino' }
-  if (m.linkClicks > 0) return { count: m.linkClicks, label: 'Cliques no link' }
-  if (m.leads > 0) return { count: m.leads, label: 'Leads' }
-  return { count: 0, label: '' }
-}
 
 // Called on day 1 of each month: syncs all accounts, then sends the previous month's report.
 export async function GET(req: NextRequest) {

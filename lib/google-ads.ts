@@ -3,8 +3,11 @@ import { prisma } from './prisma'
 
 const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v20'
 
+// Cliente axios com timeout de 60s — evita sync travado se a API do Google lentificar
+const googleApi = axios.create({ timeout: 60_000 })
+
 export async function getGoogleAdsAccessToken(refreshToken: string): Promise<string> {
-  const res = await axios.post('https://oauth2.googleapis.com/token', {
+  const res = await googleApi.post('https://oauth2.googleapis.com/token', {
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
     refresh_token: refreshToken,
@@ -47,7 +50,7 @@ export async function syncGoogleAccount(adAccountId: string) {
       ORDER BY segments.date DESC
     `
 
-    const res = await axios.post(
+    const res = await googleApi.post(
       `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
       { query },
       {

@@ -27,10 +27,15 @@ export async function POST(req: NextRequest) {
       const result = await syncMetaAccount(account.id)
       results.push({ accountId: account.id, ...result })
     } catch (err: any) {
-      console.error(`Sync failed for account ${account.id}:`, err.message)
-      if (err.response?.data) {
-        console.error('Meta API response:', JSON.stringify(err.response.data, null, 2))
-      }
+      // Loga somente status + mensagem de erro do Meta. NÃO stringifica
+      // a response completa (pode conter tokens / dados sensíveis em alguns erros).
+      const metaErr = err.response?.data?.error
+      console.error(
+        `Sync failed for account ${account.id}:`,
+        err.message,
+        err.response?.status ? `(HTTP ${err.response.status})` : '',
+        metaErr ? `Meta: ${metaErr.code || ''} ${metaErr.message || ''}`.trim() : ''
+      )
       results.push({ accountId: account.id, success: false, error: err.message })
     }
   }

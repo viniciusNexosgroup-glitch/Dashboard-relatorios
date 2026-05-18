@@ -6,6 +6,15 @@ import { formatSPDate } from './utils'
 const META_API_BASE = 'https://graph.facebook.com/v19.0'
 const INSIGHT_FIELDS = 'spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,actions,purchase_roas'
 
+// Cliente axios dedicado pro Meta com timeout de 60s — protege o sync de travar
+// caso a API do Meta lentifique ou pare de responder.
+const metaApi = axios.create({ timeout: 60_000 })
+
+// Lock em memória: impede que o mesmo adAccountId seja sincronizado em paralelo
+// (ex: cron + clique manual ao mesmo tempo). Evita corrupção de dados pelo
+// delete+create de daily metrics.
+const syncingAccounts = new Set<string>()
+
 // Returns a time_range covering the last 60 days through today in São Paulo TZ.
 // Use this instead of `date_preset: 'last_30d'`, which excludes today.
 function getSyncTimeRange(): string {
@@ -60,12 +69,12 @@ function buildMetricData(day: any) {
 async function fetchAllPages(url: string, params: any): Promise<any[]> {
   const results: any[] = []
   // First request with params
-  const first = await axios.get(url, { params })
+  const first = await metaApi.get(url, { params })
   results.push(...(first.data.data || []))
   // Follow paging.next URLs directly (Meta insights uses full URLs, not just cursors)
   let nextUrl: string | null = first.data.paging?.next ?? null
   while (nextUrl) {
-    const res = await axios.get(nextUrl)
+    const res = await metaApi.get(nextUrl)
     results.push(...(res.data.data || []))
     nextUrl = res.data.paging?.next ?? null
   }
@@ -109,8 +118,17 @@ async function upsertAdRecord(
 }
 
 export async function syncMetaAccount(adAccountId: string) {
+  // Lock: impede sync concorrente da mesma conta (race condition no delete+create de metrics)
+  if (syncingAccounts.has(adAccountId)) {
+    throw new Error('Sync já em andamento para esta conta — aguarde')
+  }
+  syncingAccounts.add(adAccountId)
+
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
-  if (!account) throw new Error('Conta Meta não encontrada')
+  if (!account) {
+    syncingAccounts.delete(adAccountId)
+    throw new Error('Conta Meta não encontrada')
+  }
 
   const token =
     account.accessToken === '__system__' || !account.accessToken
@@ -172,17 +190,19 @@ export async function syncMetaAccount(adAccountId: string) {
       })
       .filter(Boolean) as any[]
 
-    // Delete existing metrics in range for these campaigns, then bulk insert (much faster than upserts)
+    // Delete + insert envoltos em transação: ou ambos passam, ou nenhum.
+    // Evita janela onde o cliente fica sem dados no dashboard.
     if (campaignMetrics.length > 0) {
       const campaignDbIds = Array.from(campaignExternalToDb.values())
       const dates = campaignMetrics.map((m) => m.date.getTime())
-      await prisma.dailyMetric.deleteMany({
-        where: {
-          campaignId: { in: campaignDbIds },
-          date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) },
-        },
-      })
-      await prisma.dailyMetric.createMany({ data: campaignMetrics, skipDuplicates: true })
+      const minDate = new Date(Math.min(...dates))
+      const maxDate = new Date(Math.max(...dates))
+      await prisma.$transaction([
+        prisma.dailyMetric.deleteMany({
+          where: { campaignId: { in: campaignDbIds }, date: { gte: minDate, lte: maxDate } },
+        }),
+        prisma.dailyMetric.createMany({ data: campaignMetrics, skipDuplicates: true }),
+      ])
     }
     const recordsSynced = campaignMetrics.length
 
@@ -224,7 +244,7 @@ export async function syncMetaAccount(adAccountId: string) {
       for (let i = 0; i < allAdIds.length; i += 50) {
         const batch = allAdIds.slice(i, i + 50)
         try {
-          const res = await axios.get(META_API_BASE, {
+          const res = await metaApi.get(META_API_BASE, {
             params: {
               access_token: token,
               ids: batch.join(','),
@@ -248,7 +268,7 @@ export async function syncMetaAccount(adAccountId: string) {
       ))
       await parallelMap(missingCampaignIds, 10, async (campaignId) => {
         try {
-          const cRes = await axios.get(`${META_API_BASE}/${campaignId}`, {
+          const cRes = await metaApi.get(`${META_API_BASE}/${campaignId}`, {
             params: { access_token: token, fields: 'id,name,status,objective' },
           })
           const c = cRes.data
@@ -310,13 +330,15 @@ export async function syncMetaAccount(adAccountId: string) {
       if (adMetrics.length > 0) {
         const adDbIds = Array.from(adExternalToDbId.values())
         const dates = adMetrics.map((m) => m.date.getTime())
-        await prisma.dailyMetric.deleteMany({
-          where: {
-            adId: { in: adDbIds },
-            date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) },
-          },
-        })
-        await prisma.dailyMetric.createMany({ data: adMetrics, skipDuplicates: true })
+        const minDate = new Date(Math.min(...dates))
+        const maxDate = new Date(Math.max(...dates))
+        // Transação atômica: ou ambos passam, ou nenhum (evita perda temporária)
+        await prisma.$transaction([
+          prisma.dailyMetric.deleteMany({
+            where: { adId: { in: adDbIds }, date: { gte: minDate, lte: maxDate } },
+          }),
+          prisma.dailyMetric.createMany({ data: adMetrics, skipDuplicates: true }),
+        ])
       }
     } catch (adErr: any) {
       console.error('Ad sync error:', adErr.message)
@@ -339,6 +361,8 @@ export async function syncMetaAccount(adAccountId: string) {
       data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
     })
     throw error
+  } finally {
+    syncingAccounts.delete(adAccountId)
   }
 }
 
@@ -363,7 +387,7 @@ export async function refreshAccountFinancials(adAccountId: string): Promise<voi
       ? await getMetaAccessToken()
       : account.accessToken
 
-  const finRes = await axios.get(`${META_API_BASE}/${account.accountId}`, {
+  const finRes = await metaApi.get(`${META_API_BASE}/${account.accountId}`, {
     params: {
       access_token: token,
       fields: 'balance,amount_spent,currency,spend_cap,account_status,name,funding_source_details',
@@ -424,7 +448,7 @@ export async function refreshAccountFinancials(adAccountId: string): Promise<voi
 }
 
 export async function getMetaLongLivedToken(shortToken: string): Promise<string> {
-  const res = await axios.get(`${META_API_BASE}/oauth/access_token`, {
+  const res = await metaApi.get(`${META_API_BASE}/oauth/access_token`, {
     params: {
       grant_type: 'fb_exchange_token',
       client_id: process.env.META_APP_ID,

@@ -4,51 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDateRange, formatDate } from '@/lib/utils'
 import { generateReportPDF } from '@/lib/pdf-generator'
-
-type ResultMetrics = {
-  leads: number
-  msgConv: number
-  conversions: number
-  profileVisits: number
-  landingPageViews: number
-  linkClicks: number
-}
-
-function getResultByObjective(
-  objective: string | null | undefined,
-  m: ResultMetrics
-): { count: number; label: string } {
-  const obj = (objective || '').toUpperCase()
-  if (obj === 'MESSAGES' || obj === 'OUTCOME_MESSAGES')
-    return { count: m.msgConv, label: 'Conversas por mensagem' }
-  if (obj === 'OUTCOME_ENGAGEMENT' || obj === 'POST_ENGAGEMENT' || obj === 'PAGE_LIKES' || obj === 'ENGAGEMENT') {
-    if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-    return { count: 0, label: 'Engajamento' }
-  }
-  if (obj === 'LEAD_GENERATION' || obj === 'OUTCOME_LEADS')
-    return { count: m.leads, label: 'Leads' }
-  if (obj === 'LINK_CLICKS' || obj === 'TRAFFIC' || obj === 'OUTCOME_TRAFFIC') {
-    if (m.landingPageViews > 0) return { count: m.landingPageViews, label: 'Visitas à pág. de destino' }
-    return { count: m.linkClicks, label: 'Cliques no link' }
-  }
-  if (obj === 'CONVERSIONS' || obj === 'OUTCOME_SALES' || obj === 'PRODUCT_CATALOG_SALES' || obj === 'CATALOG_SALES') {
-    if (m.conversions > 0) return { count: m.conversions, label: 'Conversões' }
-    if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-    return { count: 0, label: 'Conversões' }
-  }
-  if (obj === 'REACH' || obj === 'BRAND_AWARENESS' || obj === 'OUTCOME_AWARENESS') {
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-    return { count: 0, label: 'Alcance' }
-  }
-  if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-  if (m.conversions > 0) return { count: m.conversions, label: 'Conversões' }
-  if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
-  if (m.landingPageViews > 0) return { count: m.landingPageViews, label: 'Visitas à pág. de destino' }
-  if (m.linkClicks > 0) return { count: m.linkClicks, label: 'Cliques no link' }
-  if (m.leads > 0) return { count: m.leads, label: 'Leads' }
-  return { count: 0, label: '' }
-}
+import { getResultByObjective } from '@/lib/result-by-objective'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)

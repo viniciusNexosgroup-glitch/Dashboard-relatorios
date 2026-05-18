@@ -89,9 +89,7 @@ export async function POST(req: NextRequest) {
   const filename = `relatorio-${client.company.replace(/\s/g, '-')}.pdf`
   const caption = `📊 *Relatório de Performance – ${client.company}*\n📅 Período: ${periodLabel}\n\nOlá! Segue o relatório de performance referente ao período selecionado. Qualquer dúvida, estou à disposição.`
 
-  await sendDocumentMessage(client.whatsappGroup, base64, filename, caption)
-
-  // Log send
+  // Cria report antes do envio (status READY assim que o PDF foi gerado)
   const report = await prisma.report.create({
     data: {
       clientId,
@@ -103,16 +101,37 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  await prisma.whatsappSend.create({
-    data: {
-      clientId,
-      reportId: report.id,
-      groupId: client.whatsappGroup,
-      message: caption,
-      status: 'SENT',
-      sentAt: new Date(),
-    },
-  })
-
-  return NextResponse.json({ ok: true })
+  // Tenta enviar; registra status correto independente de sucesso ou falha,
+  // pra ficar visível no Histórico de Envios.
+  try {
+    await sendDocumentMessage(client.whatsappGroup, base64, filename, caption)
+    await prisma.whatsappSend.create({
+      data: {
+        clientId,
+        reportId: report.id,
+        groupId: client.whatsappGroup,
+        message: caption,
+        status: 'SENT',
+        type: 'manual',
+        sentAt: new Date(),
+      },
+    })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    await prisma.whatsappSend.create({
+      data: {
+        clientId,
+        reportId: report.id,
+        groupId: client.whatsappGroup,
+        message: caption,
+        status: 'ERROR',
+        type: 'manual',
+        errorMessage: err.message,
+      },
+    })
+    return NextResponse.json(
+      { error: 'Falha ao enviar pelo WhatsApp. Verifique o histórico.', detail: err.message },
+      { status: 502 }
+    )
+  }
 }
