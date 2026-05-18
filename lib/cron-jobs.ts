@@ -3,6 +3,7 @@ import { prisma } from './prisma'
 import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
 import { checkAndAlertLowBalances } from './balance-alerts'
+import { refreshMetaTokenIfNearExpiry } from './meta-token'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
 // Timezone is fixed to São Paulo so the schedule matches the user's day.
@@ -12,6 +13,18 @@ let scheduled = false
 
 async function runSyncAllAccounts(triggerLabel: string) {
   console.log(`\n[cron ${triggerLabel}] sync started at ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
+
+  // Antes de sincronizar contas: garante que o token Meta tá fresco
+  // (renova se faltar < 14 dias pra expirar)
+  try {
+    const tokenResult = await refreshMetaTokenIfNearExpiry()
+    if (tokenResult.refreshed) {
+      console.log(`[cron ${triggerLabel}] token Meta renovado, vale até ${tokenResult.expiresAt?.toISOString()}`)
+    }
+  } catch (err: any) {
+    console.error(`[cron ${triggerLabel}] check de token falhou:`, err.message)
+  }
+
   const accounts = await prisma.adAccount.findMany({ where: { active: true } })
   let ok = 0, fail = 0
   for (const account of accounts) {
