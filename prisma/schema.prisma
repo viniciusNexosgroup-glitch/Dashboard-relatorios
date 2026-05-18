@@ -65,6 +65,7 @@ model AdAccount {
   fundingType     String?   // "prepaid", "credit_card", "extended_credit", etc.
   fundingDisplay  String?   // texto bruto do meio de pagamento (ex: "Visa **** 1234", "Boleto", "Saldo")
   balanceLastSync DateTime?
+  lastLowBalanceAlert DateTime?  // ultima vez que um alerta de saldo baixo foi enviado pro cliente
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -201,6 +202,7 @@ model WhatsappSend {
   groupId         String
   message         String
   status          WhatsappStatus  @default(PENDING)
+  type            String          @default("report")  // "report" | "low_balance_alert" | "manual"
   sentAt          DateTime?
   errorMessage    String?
   createdAt       DateTime        @default(now())

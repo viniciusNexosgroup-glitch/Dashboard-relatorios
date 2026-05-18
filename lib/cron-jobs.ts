@@ -2,6 +2,7 @@ import cron from 'node-cron'
 import { prisma } from './prisma'
 import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
+import { checkAndAlertLowBalances } from './balance-alerts'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
 // Timezone is fixed to São Paulo so the schedule matches the user's day.
@@ -24,6 +25,17 @@ async function runSyncAllAccounts(triggerLabel: string) {
     }
   }
   console.log(`[cron ${triggerLabel}] sync done: ${ok} ok, ${fail} fail`)
+
+  // Após sincronizar, verifica saldos baixos e alerta clientes
+  try {
+    const alertResult = await checkAndAlertLowBalances()
+    console.log(`[cron ${triggerLabel}] balance alerts: ${alertResult.alerted.length} enviados, ${alertResult.skipped.length} pulados`)
+    for (const a of alertResult.alerted) {
+      console.log(`  → alerta enviado para ${a.clientName} (saldo: R$ ${a.balance.toFixed(2)})`)
+    }
+  } catch (err: any) {
+    console.error(`[cron ${triggerLabel}] balance alerts failed:`, err.message)
+  }
 }
 
 async function runMonthlyReport() {

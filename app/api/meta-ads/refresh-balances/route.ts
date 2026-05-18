@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { refreshAccountFinancials } from '@/lib/meta-ads'
+import { checkAndAlertLowBalances } from '@/lib/balance-alerts'
 
 // Light endpoint: only refreshes balance/funding info for all META accounts (fast — seconds, not minutes).
 export async function POST(_req: NextRequest) {
@@ -24,5 +25,8 @@ export async function POST(_req: NextRequest) {
     })
   )
 
-  return NextResponse.json({ refreshed: results.length, results })
+  // Apos atualizar todos os saldos, verifica se algum cliente precisa de alerta
+  const alerts = await checkAndAlertLowBalances()
+
+  return NextResponse.json({ refreshed: results.length, results, alerts })
 }

@@ -11,12 +11,14 @@ import {
   TrendingUp,
   MessageSquare,
   Wallet,
+  Send,
 } from 'lucide-react'
 
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/saldos', label: 'Saldos', icon: Wallet },
+  { href: '/historico', label: 'Histórico WhatsApp', icon: Send },
   { href: '/relatorios', label: 'Relatórios', icon: FileText },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ]

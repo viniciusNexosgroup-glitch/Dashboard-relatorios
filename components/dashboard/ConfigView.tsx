@@ -75,10 +75,11 @@ export function ConfigView({ whatsappStatus }: Props) {
         </div>
         <div className="space-y-2 text-sm">
           {[
-            { time: '08:00', desc: 'Sincronização de métricas' },
-            { time: '14:00', desc: 'Sincronização de métricas' },
-            { time: '20:00', desc: 'Sincronização de métricas' },
+            { time: '08:00', desc: 'Sincronização de métricas + check de saldo baixo' },
+            { time: '14:00', desc: 'Sincronização de métricas + check de saldo baixo' },
+            { time: '20:00', desc: 'Sincronização de métricas + check de saldo baixo' },
             { time: 'Dia 1 de cada mês', desc: 'Envio automático de relatório mensal para todos os clientes' },
+            { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando saldo da conta pré-paga ficar < R$ 100 (cooldown 24h)' },
           ].map((item) => (
             <div key={item.time} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
               <span className="text-xs font-mono bg-gray-200 text-gray-700 px-2 py-0.5 rounded">{item.time}</span>
