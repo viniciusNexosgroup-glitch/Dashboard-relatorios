@@ -124,21 +124,22 @@ export async function syncMetaAccount(adAccountId: string) {
   }
   syncingAccounts.add(adAccountId)
 
-  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
-  if (!account) {
-    syncingAccounts.delete(adAccountId)
-    throw new Error('Conta Meta não encontrada')
-  }
-
-  const token =
-    account.accessToken === '__system__' || !account.accessToken
-      ? await getMetaAccessToken()
-      : account.accessToken
-
-  const accountExternalId = account.accountId
-  const syncLog = await prisma.syncLog.create({ data: { adAccountId, status: 'RUNNING' } })
-
+  // Tudo após o lock precisa ser envolvido em try/finally pra GARANTIR liberação,
+  // inclusive a busca do token e a criação do syncLog (que podem falhar).
+  let syncLogId: string | null = null
   try {
+    const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+    if (!account) throw new Error('Conta Meta não encontrada')
+
+    const token =
+      account.accessToken === '__system__' || !account.accessToken
+        ? await getMetaAccessToken()
+        : account.accessToken
+
+    const accountExternalId = account.accountId
+    const syncLog = await prisma.syncLog.create({ data: { adAccountId, status: 'RUNNING' } })
+    syncLogId = syncLog.id
+    {
     // ── 1. Campaigns metadata (1 call) ────────────────────────────
     // No effective_status filter — fetches default statuses. Archived campaigns
     // are fetched individually later when their ads appear in insights.
@@ -355,13 +356,17 @@ export async function syncMetaAccount(adAccountId: string) {
     })
 
     return { success: true, recordsSynced }
+    }
   } catch (error: any) {
-    await prisma.syncLog.update({
-      where: { id: syncLog.id },
-      data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
-    })
+    if (syncLogId) {
+      await prisma.syncLog.update({
+        where: { id: syncLogId },
+        data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
+      }).catch(() => {})
+    }
     throw error
   } finally {
+    // SEMPRE libera o lock — proteção contra travamento permanente da conta
     syncingAccounts.delete(adAccountId)
   }
 }
