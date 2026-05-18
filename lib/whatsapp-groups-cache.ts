@@ -28,7 +28,7 @@ async function fetchFromEvolution(): Promise<Group[]> {
 
   const res = await axios.get(
     `${url}/group/fetchAllGroups/${instance}?getParticipants=false`,
-    { headers: { apikey: key }, timeout: 90_000 }
+    { headers: { apikey: key }, timeout: 180_000 }
   )
 
   const groups: Group[] = (res.data || []).map((g: any) => ({
