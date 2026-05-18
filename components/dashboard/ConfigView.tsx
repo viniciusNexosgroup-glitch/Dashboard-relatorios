@@ -2,12 +2,15 @@
 
 import { CheckCircle, XCircle, MessageSquare, Key, Clock, Info } from 'lucide-react'
 import { ChangePasswordCard } from './ChangePasswordCard'
+import { GoogleAdsCard } from './GoogleAdsCard'
 
 interface Props {
   whatsappStatus: { connected: boolean; state: string }
+  googleConnectedEmail?: string | null
+  googleConnectedAt?: string | null
 }
 
-export function ConfigView({ whatsappStatus }: Props) {
+export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null }: Props) {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -45,6 +48,9 @@ export function ConfigView({ whatsappStatus }: Props) {
           </div>
         )}
       </div>
+
+      {/* Google Ads OAuth */}
+      <GoogleAdsCard connectedEmail={googleConnectedEmail} connectedAt={googleConnectedAt} />
 
       {/* API Keys Guide */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">

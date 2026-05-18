@@ -1,4 +1,5 @@
 import { getInstanceStatus } from '@/lib/evolution-api'
+import { getGoogleConnectedEmail, getGoogleConnectedAt } from '@/lib/google-oauth'
 import { ConfigView } from '@/components/dashboard/ConfigView'
 
 export default async function ConfiguracoesPage() {
@@ -7,5 +8,16 @@ export default async function ConfiguracoesPage() {
     whatsappStatus = await getInstanceStatus()
   } catch {}
 
-  return <ConfigView whatsappStatus={whatsappStatus} />
+  const [googleEmail, googleAt] = await Promise.all([
+    getGoogleConnectedEmail().catch(() => null),
+    getGoogleConnectedAt().catch(() => null),
+  ])
+
+  return (
+    <ConfigView
+      whatsappStatus={whatsappStatus}
+      googleConnectedEmail={googleEmail}
+      googleConnectedAt={googleAt?.toISOString() ?? null}
+    />
+  )
 }

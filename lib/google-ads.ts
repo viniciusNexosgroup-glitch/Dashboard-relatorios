@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { prisma } from './prisma'
+import { getGoogleRefreshToken } from './google-oauth'
 
 const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v20'
 
@@ -18,9 +19,18 @@ export async function getGoogleAdsAccessToken(refreshToken: string): Promise<str
 
 export async function syncGoogleAccount(adAccountId: string) {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
-  if (!account || !account.refreshToken) throw new Error('Conta Google Ads não encontrada')
+  if (!account) throw new Error('Conta Google Ads não encontrada')
 
-  const accessToken = await getGoogleAdsAccessToken(account.refreshToken)
+  // Se a conta tem refreshToken próprio (legacy), usa ele.
+  // Caso contrário ou se for "__system__", usa o token compartilhado do OAuth/.env.
+  const refreshToken =
+    account.refreshToken && account.refreshToken !== '__system__'
+      ? account.refreshToken
+      : await getGoogleRefreshToken()
+
+  if (!refreshToken) throw new Error('Nenhum token Google configurado (conecte sua conta em Configurações)')
+
+  const accessToken = await getGoogleAdsAccessToken(refreshToken)
   const customerId = account.accountId.replace(/-/g, '')
 
   const syncLog = await prisma.syncLog.create({

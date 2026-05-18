@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import axios from 'axios'
+import { getGoogleRefreshToken } from '@/lib/google-oauth'
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(refreshToken: string): Promise<string> {
   const res = await axios.post('https://oauth2.googleapis.com/token', {
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    refresh_token: refreshToken,
     grant_type: 'refresh_token',
   })
   return res.data.access_token
@@ -19,16 +20,21 @@ export async function GET() {
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN
   const developerToken = process.env.GOOGLE_DEVELOPER_TOKEN
   const managerId = process.env.GOOGLE_MANAGER_CUSTOMER_ID?.replace(/-/g, '')
 
-  if (!clientId || !clientSecret || !refreshToken || !developerToken) {
-    return NextResponse.json({ accounts: [], error: 'Google Ads não configurado' })
+  if (!clientId || !clientSecret || !developerToken) {
+    return NextResponse.json({ accounts: [], error: 'Google Ads não configurado no .env' })
+  }
+
+  // Token vem do DB (OAuth do app) ou .env como fallback
+  const refreshToken = await getGoogleRefreshToken()
+  if (!refreshToken) {
+    return NextResponse.json({ accounts: [], error: 'Conecte sua conta Google em Configurações' })
   }
 
   try {
-    const accessToken = await getAccessToken()
+    const accessToken = await getAccessToken(refreshToken)
 
     const query = `
       SELECT
