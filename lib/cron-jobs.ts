@@ -13,20 +13,25 @@ const TZ = 'America/Sao_Paulo'
 let scheduled = false
 
 async function runSyncAllAccounts(triggerLabel: string) {
-  console.log(`\n[cron ${triggerLabel}] sync started at ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
+  const tag = `[cron ${triggerLabel}]`
+  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
 
-  // Antes de sincronizar contas: garante que o token Meta tá fresco
-  // (renova se faltar < 14 dias pra expirar)
+  // ── Etapa 1: Garante token Meta fresco antes de qualquer chamada ──
+  console.log(`${tag} [1/3] verificando token Meta...`)
   try {
     const tokenResult = await refreshMetaTokenIfNearExpiry()
     if (tokenResult.refreshed) {
-      console.log(`[cron ${triggerLabel}] token Meta renovado, vale até ${tokenResult.expiresAt?.toISOString()}`)
+      console.log(`${tag} [1/3] token Meta renovado, vale até ${tokenResult.expiresAt?.toISOString()}`)
+    } else {
+      console.log(`${tag} [1/3] token Meta OK (próx. expiry: ${tokenResult.expiresAt?.toISOString() || 'desconhecido'})`)
     }
   } catch (err: any) {
-    console.error(`[cron ${triggerLabel}] check de token falhou:`, err.message)
+    console.error(`${tag} [1/3] check de token falhou:`, err.message)
   }
 
+  // ── Etapa 2: Sync de todas as contas (atualiza métricas + saldo no banco) ──
   const accounts = await prisma.adAccount.findMany({ where: { active: true } })
+  console.log(`${tag} [2/3] sincronizando ${accounts.length} contas (cada uma atualiza saldo no DB)...`)
   let ok = 0, fail = 0
   for (const account of accounts) {
     try {
@@ -34,22 +39,25 @@ async function runSyncAllAccounts(triggerLabel: string) {
       else await syncGoogleAccount(account.id)
       ok++
     } catch (err: any) {
-      console.error(`[cron ${triggerLabel}] sync error ${account.id}:`, err.message)
+      console.error(`${tag} sync error ${account.id}:`, err.message)
       fail++
     }
   }
-  console.log(`[cron ${triggerLabel}] sync done: ${ok} ok, ${fail} fail`)
+  console.log(`${tag} [2/3] sync concluído: ${ok} ok, ${fail} fail`)
 
-  // Após sincronizar, verifica saldos baixos e alerta clientes
+  // ── Etapa 3: SOMENTE DEPOIS do sync — lê saldos atualizados e dispara alertas ──
+  console.log(`${tag} [3/3] verificando saldos baixos com dados ATUALIZADOS...`)
   try {
     const alertResult = await checkAndAlertLowBalances()
-    console.log(`[cron ${triggerLabel}] balance alerts: ${alertResult.alerted.length} enviados, ${alertResult.skipped.length} pulados`)
+    console.log(`${tag} [3/3] alertas de saldo: ${alertResult.alerted.length} enviados, ${alertResult.skipped.length} pulados (cooldown/sem WhatsApp)`)
     for (const a of alertResult.alerted) {
       console.log(`  → alerta enviado para ${a.clientName} (saldo: R$ ${a.balance.toFixed(2)})`)
     }
   } catch (err: any) {
-    console.error(`[cron ${triggerLabel}] balance alerts failed:`, err.message)
+    console.error(`${tag} [3/3] alertas de saldo falharam:`, err.message)
   }
+
+  console.log(`${tag} ━━━━━━━━ FIM ━━━━━━━━`)
 }
 
 async function runMonthlyReport() {
