@@ -159,7 +159,6 @@ function generateObservations(data: ReportData): string[] {
 
 export async function generateReportPDF(data: ReportData): Promise<Buffer> {
   const obs = generateObservations(data)
-  const agencyName = process.env.NEXT_PUBLIC_AGENCY_NAME || 'Agência'
 
   const doc = React.createElement(
     Document,
@@ -175,8 +174,7 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
         React.createElement(
           View,
           null,
-          React.createElement(Text, { style: styles.agencyName }, agencyName),
-          React.createElement(Text, { style: { fontSize: 9, color: '#64748b', marginTop: 2 } }, 'Relatório de Performance')
+          React.createElement(Text, { style: styles.agencyName }, 'Relatório de Performance')
         ),
         React.createElement(
           View,
@@ -385,7 +383,7 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
       React.createElement(
         View,
         { style: styles.footer },
-        React.createElement(Text, { style: styles.footerText }, `Gerado em ${formatDate(new Date())} por ${agencyName}`),
+        React.createElement(Text, { style: styles.footerText }, `Gerado em ${formatDate(new Date())}`),
         React.createElement(Text, { style: styles.footerText }, 'Dados extraídos das plataformas de anúncios')
       )
     )
