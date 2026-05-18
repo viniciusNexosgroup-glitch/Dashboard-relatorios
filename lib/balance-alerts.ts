@@ -56,11 +56,17 @@ export async function checkAndAlertLowBalances(): Promise<{
   for (const account of eligible) {
     const balance = account.balance || 0
     const company = account.client.company
+    const platformLabel =
+      account.platform === 'META' ? 'Meta Ads (Facebook/Instagram)' :
+      account.platform === 'GOOGLE' ? 'Google Ads' :
+      account.platform
+    const platformShort = account.platform === 'META' ? 'Meta Ads' : 'Google Ads'
     const message =
-      `⚠️ *Alerta de Saldo Baixo*\n\n` +
-      `Olá! O saldo da sua conta de anúncios *${account.accountName}* está em:\n\n` +
-      `💰 *${formatCurrency(balance)}*\n\n` +
-      `Recomendamos adicionar saldo o quanto antes para que seus anúncios não sejam pausados.\n\n` +
+      `⚠️ *Alerta de Saldo Baixo - ${platformShort}*\n\n` +
+      `Olá! O saldo da sua conta de anúncios no *${platformLabel}* está em:\n\n` +
+      `🏢 Conta: *${account.accountName}*\n` +
+      `💰 Saldo atual: *${formatCurrency(balance)}*\n\n` +
+      `Recomendamos adicionar saldo o quanto antes na plataforma *${platformShort}* para que seus anúncios não sejam pausados.\n\n` +
       `Qualquer dúvida estou à disposição!`
 
     try {
