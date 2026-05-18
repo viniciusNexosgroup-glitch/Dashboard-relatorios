@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
 import { MetricsChart } from '@/components/charts/MetricsChart'
 import { CampaignTable } from '@/components/dashboard/CampaignTable'
@@ -65,11 +65,17 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
     if (selectedClient) fetchMetrics()
   }, [dateFilter])
 
+  // Ref pra sempre chamar a versão mais recente de handleSync (evita stale closure no setInterval)
+  const handleSyncRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  useEffect(() => {
+    handleSyncRef.current = handleSync
+  })
+
   // Auto-sync every 30 minutes in background while page is open
   useEffect(() => {
-    const interval = setInterval(() => handleSync(), 30 * 60 * 1000)
+    const interval = setInterval(() => handleSyncRef.current(), 30 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [selectedClient])
+  }, [])
 
   async function fetchMetrics() {
     if (!selectedClient) return

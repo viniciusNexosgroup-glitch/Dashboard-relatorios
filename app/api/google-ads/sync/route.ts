@@ -3,13 +3,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { syncGoogleAccount } from '@/lib/google-ads'
+import { syncBodySchema, parseJson } from '@/lib/validators'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const { clientId } = body
+  const parsed = await parseJson(req, syncBodySchema)
+  if ('error' in parsed) return parsed.error
+  const { clientId } = parsed.data
 
   const accounts = await prisma.adAccount.findMany({
     where: {

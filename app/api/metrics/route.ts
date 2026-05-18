@@ -4,18 +4,17 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDateRange } from '@/lib/utils'
 import { getResultByObjective } from '@/lib/result-by-objective'
+import { metricsQuerySchema, parseQuery } from '@/lib/validators'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { searchParams } = new URL(req.url)
-  const clientId = searchParams.get('clientId')
-  const period = searchParams.get('period') || 'last30days'
+  const parsed = parseQuery(req, metricsQuerySchema)
+  if ('error' in parsed) return parsed.error
+  const { clientId, period } = parsed.data
 
-  if (!clientId) return NextResponse.json({ error: 'clientId required' }, { status: 400 })
-
-  const { start, end } = getDateRange(period)
+  const { start, end } = getDateRange(period || 'last30days')
 
   const adAccounts = await prisma.adAccount.findMany({
     where: { clientId },

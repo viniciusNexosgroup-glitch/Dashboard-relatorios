@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { adAccountSchema, parseJson } from '@/lib/validators'
+import { z } from 'zod'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
+  const parsed = await parseJson(req, adAccountSchema)
+  if ('error' in parsed) return parsed.error
+  const body = parsed.data
 
   // Se vier __system__, usa o token do .env
   const accessToken =
@@ -22,24 +26,38 @@ export async function POST(req: NextRequest) {
       ? process.env.GOOGLE_REFRESH_TOKEN || ''
       : body.refreshToken || null
 
-  const account = await prisma.adAccount.create({
-    data: {
-      clientId: body.clientId,
-      platform: body.platform,
-      accountId: body.accountId,
-      accountName: body.accountName,
-      accessToken,
-      refreshToken,
-    },
-  })
-  return NextResponse.json(account)
+  try {
+    const account = await prisma.adAccount.create({
+      data: {
+        clientId: body.clientId,
+        platform: body.platform,
+        accountId: body.accountId,
+        accountName: body.accountName,
+        accessToken,
+        refreshToken,
+      },
+    })
+    return NextResponse.json(account)
+  } catch (err: any) {
+    if (err.code === 'P2002') return NextResponse.json({ error: 'Conta já vinculada' }, { status: 409 })
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
+
+const deleteSchema = z.object({ id: z.string().min(1) })
 
 export async function DELETE(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id } = await req.json()
-  await prisma.adAccount.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+  const parsed = await parseJson(req, deleteSchema)
+  if ('error' in parsed) return parsed.error
+
+  try {
+    await prisma.adAccount.delete({ where: { id: parsed.data.id } })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    if (err.code === 'P2025') return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 })
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }

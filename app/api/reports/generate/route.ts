@@ -5,12 +5,15 @@ import { prisma } from '@/lib/prisma'
 import { getDateRange, formatDate } from '@/lib/utils'
 import { generateReportPDF } from '@/lib/pdf-generator'
 import { getResultByObjective } from '@/lib/result-by-objective'
+import { reportGenerateSchema, parseJson } from '@/lib/validators'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { clientId, period } = await req.json()
+  const parsed = await parseJson(req, reportGenerateSchema)
+  if ('error' in parsed) return parsed.error
+  const { clientId, period } = parsed.data
   const { start, end } = getDateRange(period || 'last30days')
 
   const client = await prisma.client.findUnique({ where: { id: clientId } })

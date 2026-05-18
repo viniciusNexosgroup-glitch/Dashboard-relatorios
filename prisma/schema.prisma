@@ -74,6 +74,7 @@ model AdAccount {
   syncLogs        SyncLog[]
 
   @@unique([platform, accountId])
+  @@index([clientId, platform, active])  // sync/list filter
   @@map("ad_accounts")
 }
 
@@ -210,6 +211,8 @@ model WhatsappSend {
   client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   report          Report?         @relation(fields: [reportId], references: [id])
 
+  @@index([clientId, createdAt(sort: Desc)])  // historico por cliente
+  @@index([createdAt(sort: Desc)])             // historico global
   @@map("whatsapp_sends")
 }
 
@@ -232,6 +235,8 @@ model SyncLog {
 
   adAccount       AdAccount   @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
 
+  @@index([adAccountId, finishedAt(sort: Desc)])  // ultimo sync por conta
+  @@index([status, finishedAt(sort: Desc)])        // status global
   @@map("sync_logs")
 }
 
