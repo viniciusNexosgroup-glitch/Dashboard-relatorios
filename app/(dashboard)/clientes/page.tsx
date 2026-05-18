@@ -9,7 +9,7 @@ export default async function ClientesPage() {
       adAccounts: { select: { id: true, platform: true, accountName: true, active: true } },
       _count: { select: { reports: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { company: 'asc' },
   })
 
   return <ClientsView clients={clients} />

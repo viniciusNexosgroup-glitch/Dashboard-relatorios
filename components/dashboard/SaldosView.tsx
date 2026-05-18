@@ -79,18 +79,10 @@ export function SaldosView({ accounts }: Props) {
   const prepaidCount = accounts.filter((a) => isPrepaid(a.fundingType)).length
   const postpaidCount = accounts.filter((a) => !isPrepaid(a.fundingType) && !!a.fundingType).length
 
-  // Ordenação: saldo baixo (vermelho) primeiro, depois pré-pagas OK, depois outras
-  const sorted = [...filtered].sort((a, b) => {
-    const aLow = isPrepaid(a.fundingType) && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!a.balanceLastSync
-    const bLow = isPrepaid(b.fundingType) && (b.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!b.balanceLastSync
-    if (aLow && !bLow) return -1
-    if (!aLow && bLow) return 1
-    const aPre = isPrepaid(a.fundingType)
-    const bPre = isPrepaid(b.fundingType)
-    if (aPre && !bPre) return -1
-    if (!aPre && bPre) return 1
-    return (a.balance ?? 0) - (b.balance ?? 0)
-  })
+  // Ordenação alfabética pelo nome da conta (alerta visual de saldo baixo já é dado pelo card vermelho no topo)
+  const sorted = [...filtered].sort((a, b) =>
+    a.accountName.localeCompare(b.accountName, 'pt-BR', { numeric: true })
+  )
 
   const lowBalanceAccounts = accounts.filter(
     (a) => isPrepaid(a.fundingType) && !!a.balanceLastSync && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD
