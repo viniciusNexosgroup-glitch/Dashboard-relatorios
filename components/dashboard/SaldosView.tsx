@@ -5,6 +5,15 @@ import { useRouter } from 'next/navigation'
 import { RefreshCw, AlertTriangle, CheckCircle2, CreditCard } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
+const SP_TZ = 'America/Sao_Paulo'
+function formatLastSync(iso: string | null): string {
+  if (!iso) return 'nunca'
+  const d = new Date(iso)
+  const date = new Intl.DateTimeFormat('pt-BR', { timeZone: SP_TZ, day: '2-digit', month: '2-digit', year: 'numeric' }).format(d)
+  const time = new Intl.DateTimeFormat('pt-BR', { timeZone: SP_TZ, hour: '2-digit', minute: '2-digit' }).format(d)
+  return `${date} às ${time}`
+}
+
 interface Account {
   id: string
   accountId: string
@@ -74,6 +83,13 @@ export function SaldosView({ accounts }: Props) {
     (a) => isPrepaid(a.fundingType) && !!a.balanceLastSync && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD
   )
 
+  // Horário do sync mais recente entre todas as contas
+  const latestSync = accounts
+    .map((a) => a.balanceLastSync)
+    .filter((x): x is string => !!x)
+    .sort()
+    .pop() ?? null
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -82,6 +98,11 @@ export function SaldosView({ accounts }: Props) {
           <p className="text-sm text-gray-500 mt-0.5">
             Monitora contas pré-pagas para avisar clientes quando precisam adicionar saldo
           </p>
+          {latestSync && (
+            <p className="text-xs text-gray-400 mt-1">
+              Última atualização: <span className="font-medium text-gray-600">{formatLastSync(latestSync)}</span>
+            </p>
+          )}
         </div>
         <button
           onClick={handleRefresh}
@@ -194,9 +215,12 @@ export function SaldosView({ accounts }: Props) {
                       {!a.balanceLastSync ? (
                         <span className="text-xs text-gray-400 italic">não sincronizado</span>
                       ) : prepaid ? (
-                        <p className={`font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
-                          {formatCurrency(balance)}
-                        </p>
+                        <div>
+                          <p className={`font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
+                            {formatCurrency(balance)}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{formatLastSync(a.balanceLastSync)}</p>
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-400 italic" title="Pós-pago não usa saldo">N/A</span>
                       )}
