@@ -30,17 +30,30 @@ export async function checkAndAlertLowBalances(): Promise<{
   const cooldownMs = ALERT_COOLDOWN_HOURS * 60 * 60 * 1000
   const now = Date.now()
 
+  // Mesmo padrão do relatório mensal: delay aleatório 60-120s entre envios
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const randomDelay = () => 60_000 + Math.floor(Math.random() * 60_000)
+
+  // Pré-filtra quem realmente vai receber alerta (pra calcular se precisa esperar entre envios)
+  const eligible = accounts.filter(
+    (a) =>
+      a.client.whatsappGroup &&
+      (!a.lastLowBalanceAlert || now - a.lastLowBalanceAlert.getTime() >= cooldownMs)
+  )
+
+  // Marca os que vão ser pulados antes de começar os envios
   for (const account of accounts) {
     if (!account.client.whatsappGroup) {
       skipped.push({ accountId: account.id, reason: 'sem WhatsApp configurado' })
       continue
     }
-
     if (account.lastLowBalanceAlert && now - account.lastLowBalanceAlert.getTime() < cooldownMs) {
       skipped.push({ accountId: account.id, reason: 'em cooldown (já alertado nas últimas 24h)' })
-      continue
     }
+  }
 
+  let sentCount = 0
+  for (const account of eligible) {
     const balance = account.balance || 0
     const company = account.client.company
     const message =
@@ -51,7 +64,7 @@ export async function checkAndAlertLowBalances(): Promise<{
       `Qualquer dúvida estou à disposição!`
 
     try {
-      await sendTextMessage(account.client.whatsappGroup, message)
+      await sendTextMessage(account.client.whatsappGroup!, message)
 
       await prisma.adAccount.update({
         where: { id: account.id },
@@ -61,7 +74,7 @@ export async function checkAndAlertLowBalances(): Promise<{
       await prisma.whatsappSend.create({
         data: {
           clientId: account.client.id,
-          groupId: account.client.whatsappGroup,
+          groupId: account.client.whatsappGroup!,
           message,
           status: 'SENT',
           type: 'low_balance_alert',
@@ -70,11 +83,19 @@ export async function checkAndAlertLowBalances(): Promise<{
       })
 
       alerted.push({ accountId: account.id, clientName: company, balance })
+      sentCount++
+
+      // Aguarda 60-120s entre envios (exceto após o último)
+      if (sentCount < eligible.length) {
+        const wait = randomDelay()
+        console.log(`[balance-alert] enviado para ${company} (${sentCount}/${eligible.length}). Aguardando ${Math.round(wait / 1000)}s...`)
+        await sleep(wait)
+      }
     } catch (err: any) {
       await prisma.whatsappSend.create({
         data: {
           clientId: account.client.id,
-          groupId: account.client.whatsappGroup,
+          groupId: account.client.whatsappGroup!,
           message,
           status: 'ERROR',
           type: 'low_balance_alert',
