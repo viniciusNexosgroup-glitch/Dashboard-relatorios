@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
       data: {
         name: parsed.data.name,
         company: parsed.data.company,
-        phone: parsed.data.phone || null,
         whatsappGroup: parsed.data.whatsappGroup || null,
         whatsappGroupName: parsed.data.whatsappGroupName || null,
         notes: parsed.data.notes || null,

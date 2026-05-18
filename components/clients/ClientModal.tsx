@@ -7,7 +7,6 @@ interface Client {
   id: string
   name: string
   company: string
-  phone?: string | null
   whatsappGroup: string | null
   whatsappGroupName: string | null
   notes: string | null
@@ -47,7 +46,6 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [form, setForm] = useState({
     name: client?.name || '',
     company: client?.company || '',
-    phone: client?.phone || '',
     whatsappGroup: client?.whatsappGroup || '',
     whatsappGroupName: client?.whatsappGroupName || '',
     notes: client?.notes || '',
@@ -69,6 +67,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [selectedGoogle, setSelectedGoogle] = useState<Set<string>>(new Set())
   const [metaSearch, setMetaSearch] = useState('')
   const [googleSearch, setGoogleSearch] = useState('')
+  const [groupSearch, setGroupSearch] = useState('')
 
   useEffect(() => {
     fetchGroups()
@@ -212,11 +211,6 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-                  <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(11) 99999-9999"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
                   <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Preferências do cliente..." rows={2}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
@@ -249,8 +243,14 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               ) : (
+                <>
+                <input type="text" value={groupSearch} onChange={e => setGroupSearch(e.target.value)}
+                  placeholder="Pesquisar grupo..."
+                  className="w-full px-3 py-2 mb-2 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500" />
                 <div className="border border-gray-200 rounded-xl overflow-hidden max-h-44 overflow-y-auto">
-                  {groups.map((g, i) => (
+                  {groups
+                    .filter((g) => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
+                    .map((g, i) => (
                     <button key={g.id} type="button" onClick={() => setForm({
                       ...form,
                       whatsappGroup: form.whatsappGroup === g.id ? '' : g.id,
@@ -269,6 +269,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     </button>
                   ))}
                 </div>
+                </>
               )}
               {form.whatsappGroup && (groups.find(g => g.id === form.whatsappGroup) || form.whatsappGroupName) && (
                 <p className="text-xs text-green-600 mt-1.5 font-medium">
@@ -307,7 +308,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   <>
                   <input type="text" value={metaSearch} onChange={e => setMetaSearch(e.target.value)}
                     placeholder="Pesquisar conta..."
-                    className="w-full px-3 py-1.5 mb-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full px-3 py-2 mb-2 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                     {metaAccounts.filter(a => a.name.toLowerCase().includes(metaSearch.toLowerCase()) || a.id.includes(metaSearch)).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleMeta(acc.id)}
@@ -363,7 +364,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                   <>
                   <input type="text" value={googleSearch} onChange={e => setGoogleSearch(e.target.value)}
                     placeholder="Pesquisar conta..."
-                    className="w-full px-3 py-1.5 mb-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+                    className="w-full px-3 py-2 mb-2 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                     {googleAccounts.filter(a => a.name.toLowerCase().includes(googleSearch.toLowerCase()) || a.formattedId.includes(googleSearch)).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleGoogle(acc.id)}

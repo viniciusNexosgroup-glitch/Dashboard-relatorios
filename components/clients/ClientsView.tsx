@@ -9,7 +9,6 @@ interface Client {
   id: string
   name: string
   company: string
-  phone?: string | null
   whatsappGroup: string | null
   whatsappGroupName: string | null
   notes: string | null
@@ -41,7 +40,6 @@ export function ClientsView({ clients }: Props) {
       body: JSON.stringify({
         name: client.name,
         company: client.company,
-        phone: client.phone || '',
         whatsappGroup: client.whatsappGroup || '',
         whatsappGroupName: client.whatsappGroupName || '',
         notes: client.notes || '',

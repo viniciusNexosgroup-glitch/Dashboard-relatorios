@@ -18,7 +18,6 @@ export const periodSchema = z.enum([
 export const clientBodySchema = z.object({
   name: z.string().trim().min(1, 'Nome obrigatório').max(120),
   company: z.string().trim().min(1, 'Empresa obrigatória').max(160),
-  phone: z.string().trim().max(30).optional().nullable().or(z.literal('')),
   whatsappGroup: z.string().trim().max(120).optional().nullable().or(z.literal('')),
   whatsappGroupName: z.string().trim().max(160).optional().nullable().or(z.literal('')),
   notes: z.string().trim().max(2000).optional().nullable().or(z.literal('')),
