@@ -58,9 +58,11 @@ export function ChangePasswordCard() {
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Senha atual</label>
+          <label htmlFor="cp-current" className="block text-xs font-medium text-gray-700 mb-1">Senha atual</label>
           <input
+            id="cp-current"
             type="password"
+            autoComplete="current-password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             required
@@ -69,24 +71,30 @@ export function ChangePasswordCard() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Nova senha</label>
+            <label htmlFor="cp-new" className="block text-xs font-medium text-gray-700 mb-1">Nova senha</label>
             <input
+              id="cp-new"
               type="password"
+              autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
               minLength={8}
+              maxLength={72}
               className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar nova senha</label>
+            <label htmlFor="cp-confirm" className="block text-xs font-medium text-gray-700 mb-1">Confirmar nova senha</label>
             <input
+              id="cp-confirm"
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
+              maxLength={72}
               className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>

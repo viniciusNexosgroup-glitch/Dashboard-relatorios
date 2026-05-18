@@ -24,7 +24,7 @@ export function isMetaTokenError(err: any): boolean {
 export function extractMetaErrorMessage(err: any): string {
   const code = err?.response?.data?.error?.code
   const message = err?.response?.data?.error?.message
-  if (message) return `[${code}] ${message}`
+  if (message) return code != null ? `[${code}] ${message}` : message
   return err?.message || 'Erro desconhecido'
 }
 
@@ -79,16 +79,11 @@ export async function markTokenError(adAccountId: string, err: any): Promise<voi
   }
 }
 
-// Limpa o status de erro quando o sync funciona (chamado no início de cada sync bem-sucedido)
+// Limpa o status de erro quando o sync funciona.
+// Usa updateMany com filtro pra ser idempotente em 1 query — se já está null, no-op silencioso.
 export async function clearTokenError(adAccountId: string): Promise<void> {
-  const account = await prisma.adAccount.findUnique({
-    where: { id: adAccountId },
-    select: { tokenError: true },
+  await prisma.adAccount.updateMany({
+    where: { id: adAccountId, NOT: { tokenError: null } },
+    data: { tokenError: null, tokenErrorAt: null },
   })
-  if (account?.tokenError) {
-    await prisma.adAccount.update({
-      where: { id: adAccountId },
-      data: { tokenError: null, tokenErrorAt: null },
-    })
-  }
 }

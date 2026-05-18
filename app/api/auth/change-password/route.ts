@@ -8,7 +8,8 @@ import { parseJson } from '@/lib/validators'
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Senha atual obrigatória'),
-  newPassword: z.string().min(8, 'Nova senha precisa de pelo menos 8 caracteres').max(100),
+  // bcrypt trunca silenciosamente em 72 bytes — limita aqui pra evitar surpresa no login
+  newPassword: z.string().min(8, 'Nova senha precisa de pelo menos 8 caracteres').max(72, 'Senha não pode ter mais de 72 caracteres'),
 })
 
 export async function POST(req: NextRequest) {

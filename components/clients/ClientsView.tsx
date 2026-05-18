@@ -28,8 +28,27 @@ export function ClientsView({ clients }: Props) {
   const [editing, setEditing] = useState<Client | null>(null)
 
   async function handleDelete(id: string) {
-    if (!confirm('Apagar este cliente?')) return
+    if (!confirm('Apagar este cliente? Isso vai remover TODAS as campanhas, anúncios e métricas. Pra preservar histórico, considere desativar em vez de apagar.')) return
     await fetch(`/api/clients/${id}`, { method: 'DELETE' })
+    router.refresh()
+  }
+
+  async function handleToggleActive(client: Client) {
+    const action = client.active ? 'desativar' : 'reativar'
+    if (!confirm(`Tem certeza que deseja ${action} esse cliente?`)) return
+    await fetch(`/api/clients/${client.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: client.name,
+        company: client.company,
+        phone: client.phone || '',
+        whatsappGroup: client.whatsappGroup || '',
+        whatsappGroupName: client.whatsappGroupName || '',
+        notes: client.notes || '',
+        active: !client.active,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    })
     router.refresh()
   }
 
@@ -117,11 +136,17 @@ export function ClientsView({ clients }: Props) {
 
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-xs text-gray-400">{client._count.reports} relatórios gerados</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                client.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-              }`}>
+              <button
+                onClick={() => handleToggleActive(client)}
+                title={client.active ? 'Clique para desativar' : 'Clique para reativar'}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors cursor-pointer ${
+                  client.active
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+              >
                 {client.active ? 'Ativo' : 'Inativo'}
-              </span>
+              </button>
             </div>
           </div>
         ))}
