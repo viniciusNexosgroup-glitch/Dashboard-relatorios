@@ -67,7 +67,7 @@ export async function checkAndAlertLowBalances(): Promise<{
       `🏢 Conta: *${account.accountName}*\n` +
       `💰 Saldo atual: *${formatCurrency(balance)}*\n\n` +
       `Recomendamos adicionar saldo o quanto antes na plataforma *${platformShort}* para que seus anúncios não sejam pausados.\n\n` +
-      `Qualquer dúvida estou à disposição!`
+      `Posso gerar o Pix para adicionar a verba na conta agora?`
 
     try {
       await sendTextMessage(account.client.whatsappGroup!, message)
