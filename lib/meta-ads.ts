@@ -3,7 +3,10 @@ import { prisma } from './prisma'
 import { getMetaAccessToken } from './meta-token'
 import { formatSPDate } from './utils'
 
-const META_API_BASE = 'https://graph.facebook.com/v19.0'
+// Versão da Graph API configurável via env var — Meta deprecia versões periodicamente.
+// Verifique compatibilidade em https://developers.facebook.com/docs/graph-api/changelog
+const META_API_VERSION = process.env.META_API_VERSION || 'v19.0'
+const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 const INSIGHT_FIELDS = 'spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,actions,purchase_roas'
 
 // Cliente axios dedicado pro Meta com timeout de 60s — protege o sync de travar

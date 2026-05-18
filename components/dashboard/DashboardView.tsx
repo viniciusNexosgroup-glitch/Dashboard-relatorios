@@ -47,6 +47,13 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   const [syncing, setSyncing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  function showToast(type: 'success' | 'error', message: string) {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   useEffect(() => {
     // Always load existing data immediately
@@ -80,12 +87,21 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   async function fetchMetrics() {
     if (!selectedClient) return
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(`/api/metrics?clientId=${selectedClient}&period=${dateFilter}`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erro ${res.status} ao carregar métricas`)
+      }
       const data = await res.json()
       setMetrics(data)
-    } catch {}
-    setLoading(false)
+    } catch (err: any) {
+      setError(err.message || 'Falha ao buscar métricas')
+      setMetrics(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleSync() {
@@ -93,19 +109,20 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
     setSyncing(true)
     try {
       const body = selectedClient ? { clientId: selectedClient } : {}
-      await fetch('/api/meta-ads/sync', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-      })
-      await fetch('/api/google-ads/sync', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-      })
-      if (selectedClient) fetchMetrics() // refresh after sync, non-blocking
-    } catch {
-      // sync failed silently — user can retry manually
+      const [metaRes, googleRes] = await Promise.all([
+        fetch('/api/meta-ads/sync', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+        fetch('/api/google-ads/sync', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      ])
+      const failures: string[] = []
+      if (!metaRes.ok) failures.push('Meta Ads')
+      if (!googleRes.ok) failures.push('Google Ads')
+      if (failures.length > 0) {
+        showToast('error', `Falha no sync: ${failures.join(' + ')}`)
+      } else if (selectedClient) {
+        fetchMetrics()
+      }
+    } catch (err: any) {
+      showToast('error', `Erro de rede no sync: ${err.message}`)
     } finally {
       setSyncing(false)
     }
@@ -120,30 +137,44 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
         body: JSON.stringify({ clientId: selectedClient, period: dateFilter }),
         headers: { 'Content-Type': 'application/json' },
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erro ${res.status} ao gerar PDF`)
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `relatorio-${selectedClient}-${dateFilter}.pdf`
       a.click()
-    } catch {}
-    setGenerating(false)
+      URL.revokeObjectURL(url)
+      showToast('success', 'PDF gerado com sucesso')
+    } catch (err: any) {
+      showToast('error', err.message || 'Falha ao gerar PDF')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function handleSendWhatsApp() {
     if (!selectedClient) return
     setSending(true)
     try {
-      await fetch('/api/whatsapp/send', {
+      const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         body: JSON.stringify({ clientId: selectedClient, period: dateFilter }),
         headers: { 'Content-Type': 'application/json' },
       })
-      alert('Relatório enviado no WhatsApp!')
-    } catch {
-      alert('Erro ao enviar.')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erro ${res.status} ao enviar`)
+      }
+      showToast('success', 'Relatório enviado no WhatsApp!')
+    } catch (err: any) {
+      showToast('error', err.message || 'Falha ao enviar WhatsApp')
+    } finally {
+      setSending(false)
     }
-    setSending(false)
   }
 
   const s = metrics?.summary
@@ -163,6 +194,20 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
 
   return (
     <div className="space-y-6">
+      {/* Toast de feedback (auto-some em 5s) */}
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg border max-w-md transition-opacity ${
+            toast.type === 'success'
+              ? 'bg-green-50 border-green-300 text-green-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+          role="alert"
+        >
+          <p className="text-sm font-medium">{toast.message}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -252,7 +297,19 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
         </div>
       )}
 
-      {selectedClient && !loading && metrics && (
+      {selectedClient && !loading && error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <p className="text-red-700 font-medium">⚠️ {error}</p>
+          <button
+            onClick={fetchMetrics}
+            className="mt-3 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {selectedClient && !loading && !error && metrics && (
         <>
           {/* Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -61,8 +61,8 @@ export function startCronJobs() {
   cron.schedule('0 14 * * *', () => runSyncAllAccounts('14:00'), { timezone: TZ })
   cron.schedule('0 20 * * *', () => runSyncAllAccounts('20:00'), { timezone: TZ })
 
-  // Monthly report — day 1 at 08:30 (gives the 08:00 sync time to finish first)
-  cron.schedule('30 8 1 * *', () => runMonthlyReport(), { timezone: TZ })
+  // Monthly report — day 1 at 09:30 (sync das 08:00 ja deve ter terminado mesmo com muitos clientes)
+  cron.schedule('30 9 1 * *', () => runMonthlyReport(), { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08:00/14:00/20:00, monthly-report day-1 08:30 (America/Sao_Paulo)')
+  console.log('[cron] scheduled: sync 08:00/14:00/20:00, monthly-report day-1 09:30 (America/Sao_Paulo)')
 }
