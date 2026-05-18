@@ -13,9 +13,11 @@ const api = (timeoutMs = 30000) =>
 const instance = process.env.EVOLUTION_INSTANCE_NAME || 'agencia'
 
 export async function sendTextMessage(groupId: string, text: string): Promise<void> {
+  // Evolution API v2: formato achatado { number, text }
+  // (v1 antiga usava { number, textMessage: { text } } — agora retorna 400)
   await api().post(`/message/sendText/${instance}`, {
     number: groupId,
-    textMessage: { text },
+    text,
   })
 }
 
