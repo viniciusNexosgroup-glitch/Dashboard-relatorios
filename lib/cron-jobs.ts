@@ -4,6 +4,7 @@ import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
 import { checkAndAlertLowBalances } from './balance-alerts'
 import { refreshMetaTokenIfNearExpiry } from './meta-token'
+import { warmGroupsCache } from './whatsapp-groups-cache'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
 // Timezone is fixed to São Paulo so the schedule matches the user's day.
@@ -100,5 +101,18 @@ export function startCronJobs() {
   // então renovar semanalmente garante sempre >53 dias de validade restantes.
   cron.schedule('0 3 * * 1', () => runRefreshMetaToken(), { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08:00/14:00/20:00, monthly-report day-1 09:30, refresh-meta-token segunda 03:00 (America/Sao_Paulo)')
+  // Pré-aquece cache de grupos WhatsApp no startup (em 30s pra dar tempo do server estabilizar)
+  // e revalida a cada 25 minutos pra sempre ter cache fresco (TTL é 30min).
+  setTimeout(() => {
+    warmGroupsCache().then((r) =>
+      console.log(`[cron] groups cache warm: ${r.ok ? r.count + ' grupos' : 'falhou - ' + r.error}`)
+    )
+  }, 30_000)
+  cron.schedule('*/25 * * * *', () => {
+    warmGroupsCache().then((r) => {
+      if (!r.ok) console.warn(`[cron] groups cache refresh falhou: ${r.error}`)
+    })
+  }, { timezone: TZ })
+
+  console.log('[cron] scheduled: sync 08/14/20h, monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min (SP)')
 }
