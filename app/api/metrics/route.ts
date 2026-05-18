@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
 
         // Group by date for chart
         const dateKey = m.date.toISOString().substring(0, 10)
-        if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, { date: dateKey, spend: 0, clicks: 0, leads: 0, msgConversations: 0, conversions: 0 })
+        if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, { date: dateKey, spend: 0, clicks: 0, leads: 0, msgConversations: 0, conversions: 0, costPerMsg: 0 })
         const d = dailyMap.get(dateKey)!
         d.spend += m.spend
         d.clicks += m.clicks
@@ -226,7 +226,9 @@ export async function GET(req: NextRequest) {
   const avgRoas = roasCount > 0 ? totalRoas / roasCount : null
 
   const campaigns = Array.from(campaignMap.values()).sort((a, b) => b.spend - a.spend)
-  const chartData = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+  const chartData = Array.from(dailyMap.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => ({ ...d, costPerMsg: d.msgConversations > 0 ? d.spend / d.msgConversations : 0 }))
 
   // Aggregate ad-level metrics (use parent campaign's objective)
   const adMap: Map<string, any> = new Map()
