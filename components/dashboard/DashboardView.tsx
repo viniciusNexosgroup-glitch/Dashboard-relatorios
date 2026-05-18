@@ -49,11 +49,21 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(type: 'success' | 'error', message: string) {
+    // Cancela timer anterior pra não limpar o toast novo prematuramente
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast({ type, message })
-    setTimeout(() => setToast(null), 5000)
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000)
   }
+
+  // Cleanup do timer quando o componente desmonta (evita setState em unmounted)
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     // Always load existing data immediately

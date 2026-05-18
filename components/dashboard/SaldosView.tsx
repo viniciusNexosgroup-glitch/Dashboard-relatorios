@@ -28,6 +28,8 @@ interface Account {
   fundingType: string | null
   fundingDisplay: string | null
   active: boolean
+  tokenError: string | null
+  tokenErrorAt: string | null
   balanceLastSync: string | null
 }
 
@@ -87,6 +89,7 @@ export function SaldosView({ accounts }: Props) {
   const lowBalanceAccounts = accounts.filter(
     (a) => isPrepaid(a.fundingType) && !!a.balanceLastSync && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD
   )
+  const tokenErrorAccounts = accounts.filter((a) => !!a.tokenError)
 
   // Horário do sync mais recente entre todas as contas
   const latestSync = accounts
@@ -118,6 +121,29 @@ export function SaldosView({ accounts }: Props) {
           {refreshing ? 'Atualizando...' : 'Atualizar Saldos'}
         </button>
       </div>
+
+      {/* Banner de token expirado (mais grave que saldo baixo, vem antes) */}
+      {tokenErrorAccounts.length > 0 && (
+        <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center shrink-0 text-white text-xl">
+            🔑
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-orange-800 text-base">
+              {tokenErrorAccounts.length} {tokenErrorAccounts.length === 1 ? 'conta com token' : 'contas com tokens'} expirado/inválido
+            </h3>
+            <p className="text-sm text-orange-700 mt-1">
+              {tokenErrorAccounts.length === 1 ? 'A conta' : 'As contas'} abaixo {tokenErrorAccounts.length === 1 ? 'precisa' : 'precisam'} de um novo token Meta.
+              Enquanto isso, os syncs vão falhar e os dados não vão atualizar. Renove o token no painel do Meta Business.
+            </p>
+            <ul className="mt-2 text-xs text-orange-700 space-y-1">
+              {tokenErrorAccounts.map((a) => (
+                <li key={a.id}>• <strong>{a.accountName}</strong>: {a.tokenError}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Banner de alerta */}
       {lowBalanceAccounts.length > 0 ? (

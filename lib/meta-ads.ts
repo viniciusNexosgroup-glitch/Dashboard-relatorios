@@ -2,6 +2,7 @@ import axios from 'axios'
 import { prisma } from './prisma'
 import { getMetaAccessToken } from './meta-token'
 import { formatSPDate } from './utils'
+import { isMetaTokenError, markTokenError, clearTokenError } from './token-alerts'
 
 // Versão da Graph API configurável via env var — Meta deprecia versões periodicamente.
 // Verifique compatibilidade em https://developers.facebook.com/docs/graph-api/changelog
@@ -142,7 +143,7 @@ export async function syncMetaAccount(adAccountId: string) {
     const accountExternalId = account.accountId
     const syncLog = await prisma.syncLog.create({ data: { adAccountId, status: 'RUNNING' } })
     syncLogId = syncLog.id
-    {
+
     // ── 1. Campaigns metadata (1 call) ────────────────────────────
     // No effective_status filter — fetches default statuses. Archived campaigns
     // are fetched individually later when their ads appear in insights.
@@ -208,7 +209,7 @@ export async function syncMetaAccount(adAccountId: string) {
         prisma.dailyMetric.createMany({ data: campaignMetrics, skipDuplicates: true }),
       ])
     }
-    const recordsSynced = campaignMetrics.length
+    let recordsSynced = campaignMetrics.length
 
     // ── 3. Ad insights — includes ad_name, adset_id, campaign_id directly ──
     try {
@@ -343,6 +344,7 @@ export async function syncMetaAccount(adAccountId: string) {
           }),
           prisma.dailyMetric.createMany({ data: adMetrics, skipDuplicates: true }),
         ])
+        recordsSynced += adMetrics.length  // reflete trabalho total no syncLog
       }
     } catch (adErr: any) {
       console.error('Ad sync error:', adErr.message)
@@ -358,14 +360,20 @@ export async function syncMetaAccount(adAccountId: string) {
       data: { status: 'SUCCESS', recordsSynced, finishedAt: new Date() },
     })
 
+    // Sync ok — limpa flag de erro de token se estava setada
+    await clearTokenError(adAccountId).catch(() => {})
+
     return { success: true, recordsSynced }
-    }
   } catch (error: any) {
     if (syncLogId) {
       await prisma.syncLog.update({
         where: { id: syncLogId },
         data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
       }).catch(() => {})
+    }
+    // Se o erro for de token expirado/inválido, marca a conta e alerta o admin
+    if (isMetaTokenError(error)) {
+      await markTokenError(adAccountId, error).catch(() => {})
     }
     throw error
   } finally {

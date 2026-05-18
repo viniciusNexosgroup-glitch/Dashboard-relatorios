@@ -1,6 +1,7 @@
 'use client'
 
 import { CheckCircle, XCircle, MessageSquare, Key, Clock, Info } from 'lucide-react'
+import { ChangePasswordCard } from './ChangePasswordCard'
 
 interface Props {
   whatsappStatus: { connected: boolean; state: string }
@@ -95,6 +96,9 @@ export function ConfigView({ whatsappStatus }: Props) {
           </p>
         </div>
       </div>
+
+      {/* Trocar senha */}
+      <ChangePasswordCard />
     </div>
   )
 }

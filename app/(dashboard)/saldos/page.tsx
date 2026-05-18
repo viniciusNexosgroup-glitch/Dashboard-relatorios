@@ -24,6 +24,8 @@ export default async function SaldosPage() {
         fundingType: a.fundingType,
         fundingDisplay: a.fundingDisplay,
         active: a.active,
+        tokenError: a.tokenError,
+        tokenErrorAt: a.tokenErrorAt?.toISOString() ?? null,
         balanceLastSync: a.balanceLastSync?.toISOString() ?? null,
       }))}
     />
