@@ -13,6 +13,16 @@ import {
 } from 'recharts'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 
+// "2026-05-08" → "08/05" (curto pro eixo X) ou "08/05/2026" (completo pro tooltip)
+function fmtShort(d: string): string {
+  const [, m, day] = d.split('-')
+  return `${day}/${m}`
+}
+function fmtFull(d: string): string {
+  const [y, m, day] = d.split('-')
+  return `${day}/${m}/${y}`
+}
+
 interface ChartData {
   date: string
   spend: number
@@ -41,6 +51,7 @@ export function MetricsChart({ data }: Props) {
           tick={{ fontSize: 11, fill: '#94a3b8' }}
           tickLine={false}
           axisLine={false}
+          tickFormatter={fmtShort}
         />
         {/* Eixo esquerdo: quantidade de conversas (escala pequena, integer) */}
         <YAxis
@@ -75,6 +86,7 @@ export function MetricsChart({ data }: Props) {
             if (name === 'Custo por conversa') return formatCurrency(Number(value))
             return formatNumber(Number(value))
           }}
+          labelFormatter={(label: string) => fmtFull(label)}
           contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, backgroundColor: '#ffffff' }}
           labelStyle={{ color: '#1e293b', fontWeight: 600, marginBottom: 4 }}
           itemStyle={{ padding: 0 }}
