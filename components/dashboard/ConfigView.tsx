@@ -79,6 +79,7 @@ export function ConfigView({ whatsappStatus }: Props) {
             { time: '08:00', desc: 'Sincronização de métricas + check de saldo baixo' },
             { time: '14:00', desc: 'Sincronização de métricas + check de saldo baixo' },
             { time: '20:00', desc: 'Sincronização de métricas + check de saldo baixo' },
+            { time: 'Segunda 03:00', desc: 'Renovação automática do token Meta (válido por 60 dias)' },
             { time: 'Dia 1 às 09:30', desc: 'Envio automático de relatório mensal para todos os clientes (sincroniza antes)' },
             { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando saldo da conta pré-paga ficar < R$ 100 (cooldown 24h)' },
           ].map((item) => (
