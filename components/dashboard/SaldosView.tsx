@@ -51,9 +51,12 @@ const fundingLabel: Record<string, string> = {
 
 const isPrepaid = (ft: string | null) => ft === 'prepaid'
 
+type Filter = 'all' | 'prepaid' | 'postpaid'
+
 export function SaldosView({ accounts }: Props) {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
 
   async function handleRefresh() {
     if (refreshing) return
@@ -66,8 +69,18 @@ export function SaldosView({ accounts }: Props) {
     setRefreshing(false)
   }
 
+  // Aplica filtro de tipo (pré-paga / pós-paga / todas)
+  const filtered = accounts.filter((a) => {
+    if (filter === 'all') return true
+    if (filter === 'prepaid') return isPrepaid(a.fundingType)
+    return !isPrepaid(a.fundingType) && !!a.fundingType // pós-paga = qualquer coisa que não seja pré-paga
+  })
+
+  const prepaidCount = accounts.filter((a) => isPrepaid(a.fundingType)).length
+  const postpaidCount = accounts.filter((a) => !isPrepaid(a.fundingType) && !!a.fundingType).length
+
   // Ordenação: saldo baixo (vermelho) primeiro, depois pré-pagas OK, depois outras
-  const sorted = [...accounts].sort((a, b) => {
+  const sorted = [...filtered].sort((a, b) => {
     const aLow = isPrepaid(a.fundingType) && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!a.balanceLastSync
     const bLow = isPrepaid(b.fundingType) && (b.balance ?? 0) < LOW_BALANCE_THRESHOLD && !!b.balanceLastSync
     if (aLow && !bLow) return -1
@@ -144,6 +157,27 @@ export function SaldosView({ accounts }: Props) {
         </div>
       )}
 
+      {/* Filtro */}
+      <div className="flex items-center gap-2">
+        {([
+          { value: 'all', label: 'Todas', count: accounts.length },
+          { value: 'prepaid', label: 'Pré-pagas', count: prepaidCount },
+          { value: 'postpaid', label: 'Pós-pagas', count: postpaidCount },
+        ] as { value: Filter; label: string; count: number }[]).map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === f.value
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {f.label} <span className={`ml-1 text-xs ${filter === f.value ? 'text-indigo-200' : 'text-gray-400'}`}>({f.count})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Tabela */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -158,10 +192,12 @@ export function SaldosView({ accounts }: Props) {
               </tr>
             </thead>
             <tbody>
-              {accounts.length === 0 && (
+              {sorted.length === 0 && (
                 <tr>
                   <td colSpan={5} className="text-center text-gray-400 py-8">
-                    Nenhuma conta Meta vinculada.
+                    {accounts.length === 0
+                      ? 'Nenhuma conta Meta vinculada.'
+                      : `Nenhuma conta ${filter === 'prepaid' ? 'pré-paga' : 'pós-paga'} encontrada.`}
                   </td>
                 </tr>
               )}
