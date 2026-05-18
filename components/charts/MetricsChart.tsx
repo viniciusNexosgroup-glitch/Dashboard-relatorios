@@ -18,6 +18,7 @@ interface ChartData {
   spend: number
   clicks: number
   leads: number
+  msgConversations: number
   conversions: number
 }
 
@@ -65,7 +66,7 @@ export function MetricsChart({ data }: Props) {
         <Bar yAxisId="left" dataKey="spend" name="Investimento" fill="#6366f1" opacity={0.8} radius={[4, 4, 0, 0]} />
         <Line yAxisId="right" type="monotone" dataKey="clicks" name="Cliques" stroke="#06b6d4" strokeWidth={2} dot={false} />
         <Line yAxisId="right" type="monotone" dataKey="leads" name="Leads" stroke="#22c55e" strokeWidth={2} dot={false} />
-        <Line yAxisId="right" type="monotone" dataKey="conversions" name="Conversões" stroke="#f59e0b" strokeWidth={2} dot={false} />
+        <Line yAxisId="right" type="monotone" dataKey="msgConversations" name="Conversas por mensagem" stroke="#f59e0b" strokeWidth={2} dot={false} />
       </ComposedChart>
     </ResponsiveContainer>
   )
