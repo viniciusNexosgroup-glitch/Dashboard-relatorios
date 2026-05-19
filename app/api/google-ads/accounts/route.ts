@@ -29,6 +29,42 @@ type Account = {
   isManager: boolean
 }
 
+function getGoogleAdsErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) {
+    return err instanceof Error ? err.message : 'Erro desconhecido ao consultar Google Ads'
+  }
+
+  const data = err.response?.data as {
+    error?: {
+      message?: string
+      details?: {
+        errors?: {
+          errorCode?: Record<string, string>
+          message?: string
+        }[]
+      }[]
+    }
+  } | undefined
+
+  const apiError = data?.error?.details?.[0]?.errors?.[0]
+  const authorizationError = apiError?.errorCode?.authorizationError
+  const message = apiError?.message || data?.error?.message || err.message
+
+  if (authorizationError === 'DEVELOPER_TOKEN_PROHIBITED' || message.includes('Developer token is not allowed with project')) {
+    return [
+      'Developer Token nao permitido para este projeto Google Cloud.',
+      'Crie um novo projeto no Google Cloud, ative a Google Ads API nele, gere um novo OAuth Client ID/Secret nesse projeto e atualize GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.',
+      'Depois reconecte a conta Google em Configuracoes.',
+    ].join(' ')
+  }
+
+  if (authorizationError === 'DEVELOPER_TOKEN_INVALID') {
+    return 'Developer Token invalido. Copie novamente o token aprovado no Google Ads API Center e atualize GOOGLE_DEVELOPER_TOKEN.'
+  }
+
+  return message
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -147,12 +183,9 @@ export async function GET() {
     usable.sort((a, b) => a.name.localeCompare(b.name))
 
     return NextResponse.json({ accounts: usable, total: accounts.length, totalAccessible: customerIds.length })
-  } catch (err: any) {
-    const status = err.response?.status
-    const msg =
-      err.response?.data?.error?.details?.[0]?.errors?.[0]?.message ||
-      err.response?.data?.error?.message ||
-      err.message
+  } catch (err: unknown) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined
+    const msg = getGoogleAdsErrorMessage(err)
     return NextResponse.json({ accounts: [], error: `${status ? `[${status}] ` : ''}${msg}` })
   }
 }
