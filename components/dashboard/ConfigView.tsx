@@ -67,7 +67,7 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
           </div>
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
             <p className="font-semibold text-red-800 mb-1">Google Ads</p>
-            <p className="text-red-700 text-xs">Configure <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong> e <strong>GOOGLE_DEVELOPER_TOKEN</strong> no .env. O refresh token é armazenado por conta de anúncio.</p>
+            <p className="text-red-700 text-xs">Configure <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong> e um <strong>GOOGLE_DEVELOPER_TOKEN</strong> aprovado no .env. Tokens pendentes/rejeitados acessam apenas contas de teste.</p>
           </div>
         </div>
       </div>

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const refreshToken =
     body.refreshToken === '__system__'
-      ? process.env.GOOGLE_REFRESH_TOKEN || ''
+      ? '__system__'
       : body.refreshToken || null
 
   try {

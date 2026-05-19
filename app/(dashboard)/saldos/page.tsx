@@ -3,7 +3,6 @@ import { SaldosView } from '@/components/dashboard/SaldosView'
 
 export default async function SaldosPage() {
   const accounts = await prisma.adAccount.findMany({
-    where: { platform: 'META' },
     include: { client: { select: { name: true, company: true } } },
     orderBy: { balance: 'asc' },
   })
@@ -12,6 +11,7 @@ export default async function SaldosPage() {
     <SaldosView
       accounts={accounts.map((a) => ({
         id: a.id,
+        platform: a.platform,
         accountId: a.accountId,
         accountName: a.accountName,
         clientName: a.client?.company || null,

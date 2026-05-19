@@ -8,13 +8,53 @@ const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v20'
 const googleApi = axios.create({ timeout: 60_000 })
 
 export async function getGoogleAdsAccessToken(refreshToken: string): Promise<string> {
-  const res = await googleApi.post('https://oauth2.googleapis.com/token', {
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    refresh_token: refreshToken,
-    grant_type: 'refresh_token',
-  })
+  const res = await googleApi.post(
+    'https://oauth2.googleapis.com/token',
+    new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID || '',
+      client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  )
   return res.data.access_token
+}
+
+function getGoogleLoginCustomerId(): string | undefined {
+  return process.env.GOOGLE_MANAGER_CUSTOMER_ID?.replace(/-/g, '')
+}
+
+function getGoogleHeaders(accessToken: string): Record<string, string> {
+  const loginCustomerId = getGoogleLoginCustomerId()
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN || '',
+    ...(loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}),
+  }
+}
+
+function microsToCurrency(value: string | number | null | undefined): number | null {
+  if (value == null) return null
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed / 1_000_000 : null
+}
+
+function getGoogleErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as {
+      error?: {
+        message?: string
+        details?: { errors?: { message?: string }[] }[]
+      }
+    } | undefined
+    return (
+      data?.error?.details?.[0]?.errors?.[0]?.message ||
+      data?.error?.message ||
+      error.message
+    )
+  }
+  return error instanceof Error ? error.message : 'Erro desconhecido'
 }
 
 export async function syncGoogleAccount(adAccountId: string) {
@@ -64,13 +104,7 @@ export async function syncGoogleAccount(adAccountId: string) {
       `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
       { query },
       {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN,
-          ...(process.env.GOOGLE_MANAGER_CUSTOMER_ID && {
-            'login-customer-id': process.env.GOOGLE_MANAGER_CUSTOMER_ID,
-          }),
-        },
+        headers: getGoogleHeaders(accessToken),
       }
     )
 
@@ -137,12 +171,114 @@ export async function syncGoogleAccount(adAccountId: string) {
       data: { status: 'SUCCESS', recordsSynced, finishedAt: new Date() },
     })
 
+    await refreshGoogleAccountFinancials(adAccountId).catch((e) =>
+      console.error('Google account financials sync error:', e.message)
+    )
+
     return { success: true, recordsSynced }
-  } catch (error: any) {
+  } catch (error: unknown) {
     await prisma.syncLog.update({
       where: { id: syncLog.id },
-      data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
+      data: { status: 'ERROR', errorMessage: getGoogleErrorMessage(error), finishedAt: new Date() },
     })
     throw error
+  }
+}
+
+export async function refreshGoogleAccountFinancials(adAccountId: string): Promise<void> {
+  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+  if (!account) throw new Error('Conta Google Ads nao encontrada')
+
+  const refreshToken =
+    account.refreshToken && account.refreshToken !== '__system__'
+      ? account.refreshToken
+      : await getGoogleRefreshToken()
+
+  if (!refreshToken) throw new Error('Nenhum token Google configurado (conecte sua conta em Configuracoes)')
+
+  const accessToken = await getGoogleAdsAccessToken(refreshToken)
+  const customerId = account.accountId.replace(/-/g, '')
+  const headers = getGoogleHeaders(accessToken)
+
+  const customerRes = await googleApi.post(
+    `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
+    {
+      query: `
+        SELECT
+          customer.currency_code,
+          customer.status
+        FROM customer
+        LIMIT 1
+      `,
+    },
+    { headers }
+  )
+
+  const customer = customerRes.data?.results?.[0]?.customer
+
+  try {
+    const budgetRes = await googleApi.post(
+      `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
+      {
+        query: `
+          SELECT
+            account_budget.name,
+            account_budget.status,
+            account_budget.adjusted_spending_limit_micros,
+            account_budget.adjusted_spending_limit_type,
+            account_budget.approved_spending_limit_micros,
+            account_budget.approved_spending_limit_type,
+            account_budget.amount_served_micros,
+            account_budget.total_adjustments_micros
+          FROM account_budget
+          WHERE account_budget.status = APPROVED
+          LIMIT 1
+        `,
+      },
+      { headers }
+    )
+
+    const budget = budgetRes.data?.results?.[0]?.accountBudget
+    const adjustedLimit = microsToCurrency(budget?.adjustedSpendingLimitMicros)
+    const approvedLimit = microsToCurrency(budget?.approvedSpendingLimitMicros)
+    const amountServed = microsToCurrency(budget?.amountServedMicros)
+    const spendCap = adjustedLimit ?? approvedLimit
+    const balance =
+      spendCap != null && amountServed != null
+        ? Math.max(spendCap - amountServed, 0)
+        : null
+    const limitType = budget?.adjustedSpendingLimitType || budget?.approvedSpendingLimitType
+
+    await prisma.adAccount.update({
+      where: { id: adAccountId },
+      data: {
+        balance,
+        amountSpent: amountServed,
+        spendCap,
+        currency: customer?.currencyCode || null,
+        accountStatus: null,
+        fundingType: budget ? 'monthly_invoicing' : null,
+        fundingDisplay: budget
+          ? `${budget.name || 'Orcamento da conta'} (${limitType || 'limite finito'})`
+          : 'A API do Google Ads nao expoe saldo pre-pago/cartao; somente billing mensal quando disponivel.',
+        balanceLastSync: new Date(),
+      },
+    })
+  } catch (error: unknown) {
+    const msg = getGoogleErrorMessage(error)
+
+    await prisma.adAccount.update({
+      where: { id: adAccountId },
+      data: {
+        balance: null,
+        amountSpent: null,
+        spendCap: null,
+        currency: customer?.currencyCode || null,
+        accountStatus: null,
+        fundingType: 'google_limited',
+        fundingDisplay: `Billing Google indisponivel via API: ${msg}`,
+        balanceLastSync: new Date(),
+      },
+    })
   }
 }

@@ -31,5 +31,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ results })
+  const failed = results.filter((r) => !r.success)
+  return NextResponse.json(
+    {
+      results,
+      ...(failed.length > 0 ? { error: failed.map((r) => r.error).join('; ') } : {}),
+    },
+    { status: failed.length > 0 ? 502 : 200 }
+  )
 }

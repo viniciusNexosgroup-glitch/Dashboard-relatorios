@@ -16,6 +16,7 @@ function formatLastSync(iso: string | null): string {
 
 interface Account {
   id: string
+  platform: 'META' | 'GOOGLE'
   accountId: string
   accountName: string
   clientName: string | null
@@ -49,9 +50,12 @@ const fundingLabel: Record<string, string> = {
   prepaid: 'Pré-paga',
   credit_card: 'Cartão de crédito',
   extended_credit: 'Linha de crédito',
+  monthly_invoicing: 'Faturamento mensal',
+  google_limited: 'Google limitado',
 }
 
 const isPrepaid = (ft: string | null) => ft === 'prepaid'
+const hasBalanceLikeValue = (a: Account) => isPrepaid(a.fundingType) || a.fundingType === 'monthly_invoicing'
 
 type Filter = 'all' | 'prepaid' | 'postpaid'
 
@@ -65,7 +69,10 @@ export function SaldosView({ accounts }: Props) {
     setRefreshing(true)
     try {
       // Endpoint leve: só atualiza saldo/funding (não faz sync de campanhas/anúncios)
-      await fetch('/api/meta-ads/refresh-balances', { method: 'POST' })
+      await Promise.all([
+        fetch('/api/meta-ads/refresh-balances', { method: 'POST' }),
+        fetch('/api/google-ads/refresh-balances', { method: 'POST' }),
+      ])
       router.refresh()
     } catch {}
     setRefreshing(false)
@@ -231,7 +238,9 @@ export function SaldosView({ accounts }: Props) {
                   >
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-800">{a.accountName}</p>
-                      <p className="text-xs text-gray-400 font-mono">{a.accountId}</p>
+                      <p className="text-xs text-gray-400 font-mono">
+                        {a.platform === 'META' ? 'Meta Ads' : 'Google Ads'} - {a.accountId}
+                      </p>
                     </td>
                     <td className="py-3 px-4">
                       {a.clientName ? (
@@ -268,12 +277,14 @@ export function SaldosView({ accounts }: Props) {
                     <td className="py-3 px-4 text-right">
                       {!a.balanceLastSync ? (
                         <span className="text-xs text-gray-400 italic">não sincronizado</span>
-                      ) : prepaid ? (
+                      ) : hasBalanceLikeValue(a) && a.balance != null ? (
                         <div>
                           <p className={`font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
                             {formatCurrency(balance)}
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5">{formatLastSync(a.balanceLastSync)}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {a.fundingType === 'monthly_invoicing' ? 'limite restante' : formatLastSync(a.balanceLastSync)}
+                          </p>
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400 italic" title="Pós-pago não usa saldo">N/A</span>
