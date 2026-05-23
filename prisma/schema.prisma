@@ -36,6 +36,9 @@ model Client {
   whatsappGroupName String?
   notes           String?
   active          Boolean   @default(true)
+  // Controles de envio automatico no grupo WhatsApp (independentes)
+  alertsEnabled   Boolean   @default(true)  // alertas de saldo baixo
+  reportsEnabled  Boolean   @default(true)  // relatorio mensal automatico
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

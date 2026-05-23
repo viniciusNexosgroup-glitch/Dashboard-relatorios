@@ -44,7 +44,9 @@ export async function GET(req: NextRequest) {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
   const randomDelay = () => 60_000 + Math.floor(Math.random() * 60_000)
 
-  const eligibleClients = clients.filter((c) => c.whatsappGroup && c.adAccounts.length > 0)
+  const eligibleClients = clients.filter(
+    (c) => c.whatsappGroup && c.adAccounts.length > 0 && c.reportsEnabled !== false
+  )
   console.log(`[monthly-report] enviando para ${eligibleClients.length} clientes elegiveis, intervalo 60-120s entre cada um`)
 
   let sentCount = 0
@@ -62,6 +64,12 @@ export async function GET(req: NextRequest) {
       await prisma.whatsappSend.create({
         data: { clientId: client.id, groupId: client.whatsappGroup, message: '', status: 'ACCOUNT_DISCONNECTED' },
       })
+      continue
+    }
+
+    // Cliente com relatorios desativados pelo admin — pula sem registrar como erro
+    if (client.reportsEnabled === false) {
+      statuses.push({ clientId: client.id, company: client.company, status: 'REPORTS_DISABLED' })
       continue
     }
 

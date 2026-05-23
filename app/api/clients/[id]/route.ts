@@ -22,6 +22,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         whatsappGroupName: parsed.data.whatsappGroupName || null,
         notes: parsed.data.notes || null,
         ...(typeof parsed.data.active === 'boolean' ? { active: parsed.data.active } : {}),
+        ...(typeof parsed.data.alertsEnabled === 'boolean' ? { alertsEnabled: parsed.data.alertsEnabled } : {}),
+        ...(typeof parsed.data.reportsEnabled === 'boolean' ? { reportsEnabled: parsed.data.reportsEnabled } : {}),
       },
     })
     return NextResponse.json(client)

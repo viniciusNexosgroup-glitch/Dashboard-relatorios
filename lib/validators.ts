@@ -21,7 +21,9 @@ export const clientBodySchema = z.object({
   whatsappGroup: z.string().trim().max(120).optional().nullable().or(z.literal('')),
   whatsappGroupName: z.string().trim().max(160).optional().nullable().or(z.literal('')),
   notes: z.string().trim().max(2000).optional().nullable().or(z.literal('')),
-  active: z.boolean().optional(),  // toggle de ativar/desativar
+  active: z.boolean().optional(),          // toggle ativar/desativar cliente
+  alertsEnabled: z.boolean().optional(),   // toggle de alertas de saldo
+  reportsEnabled: z.boolean().optional(),  // toggle de relatorio mensal
 })
 
 // POST /api/meta-ads/sync e /api/google-ads/sync

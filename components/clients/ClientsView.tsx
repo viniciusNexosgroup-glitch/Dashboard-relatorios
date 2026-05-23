@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Building2, MessageSquare, Edit, Trash2 } from 'lucide-react'
+import { Plus, Building2, MessageSquare, Edit, Trash2, Bell, BellOff, FileText, FileX } from 'lucide-react'
 import { ClientModal } from './ClientModal'
 
 interface Client {
@@ -13,6 +13,8 @@ interface Client {
   whatsappGroupName: string | null
   notes: string | null
   active: boolean
+  alertsEnabled: boolean
+  reportsEnabled: boolean
   adAccounts: { id: string; platform: string; accountName: string; active: boolean }[]
   _count: { reports: number }
 }
@@ -44,6 +46,22 @@ export function ClientsView({ clients }: Props) {
         whatsappGroupName: client.whatsappGroupName || '',
         notes: client.notes || '',
         active: !client.active,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    router.refresh()
+  }
+
+  async function handleToggleSetting(client: Client, field: 'alertsEnabled' | 'reportsEnabled') {
+    await fetch(`/api/clients/${client.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: client.name,
+        company: client.company,
+        whatsappGroup: client.whatsappGroup || '',
+        whatsappGroupName: client.whatsappGroupName || '',
+        notes: client.notes || '',
+        [field]: !client[field],
       }),
       headers: { 'Content-Type': 'application/json' },
     })
@@ -130,6 +148,34 @@ export function ClientsView({ clients }: Props) {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Toggles de envios automaticos pro WhatsApp */}
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+              <button
+                onClick={() => handleToggleSetting(client, 'alertsEnabled')}
+                title={client.alertsEnabled ? 'Alertas de saldo ATIVOS — clique pra desativar' : 'Alertas de saldo DESATIVADOS — clique pra ativar'}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                  client.alertsEnabled
+                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 border border-gray-200 line-through'
+                }`}
+              >
+                {client.alertsEnabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
+                Alertas
+              </button>
+              <button
+                onClick={() => handleToggleSetting(client, 'reportsEnabled')}
+                title={client.reportsEnabled ? 'Relatório mensal ATIVO — clique pra desativar' : 'Relatório mensal DESATIVADO — clique pra ativar'}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                  client.reportsEnabled
+                    ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 border border-gray-200 line-through'
+                }`}
+              >
+                {client.reportsEnabled ? <FileText className="w-3 h-3" /> : <FileX className="w-3 h-3" />}
+                Relatório
+              </button>
             </div>
 
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">

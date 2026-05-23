@@ -21,7 +21,7 @@ export async function checkAndAlertLowBalances(): Promise<{
       balance: { not: null, lt: LOW_BALANCE_THRESHOLD },
     },
     include: {
-      client: { select: { id: true, name: true, company: true, whatsappGroup: true } },
+      client: { select: { id: true, name: true, company: true, whatsappGroup: true, alertsEnabled: true } },
     },
   })
 
@@ -38,6 +38,7 @@ export async function checkAndAlertLowBalances(): Promise<{
   const eligible = accounts.filter(
     (a) =>
       a.client.whatsappGroup &&
+      a.client.alertsEnabled !== false &&
       (!a.lastLowBalanceAlert || now - a.lastLowBalanceAlert.getTime() >= cooldownMs)
   )
 
@@ -45,6 +46,10 @@ export async function checkAndAlertLowBalances(): Promise<{
   for (const account of accounts) {
     if (!account.client.whatsappGroup) {
       skipped.push({ accountId: account.id, reason: 'sem WhatsApp configurado' })
+      continue
+    }
+    if (account.client.alertsEnabled === false) {
+      skipped.push({ accountId: account.id, reason: 'alertas desativados pelo admin' })
       continue
     }
     if (account.lastLowBalanceAlert && now - account.lastLowBalanceAlert.getTime() < cooldownMs) {
