@@ -19,12 +19,16 @@ export async function GET(req: NextRequest) {
 
   const results: any[] = []
 
+  // ?deep=true for the weekly 60-day sync, default is 7 days (low IO)
+  const url = new URL(req.url)
+  const syncDays = url.searchParams.get('deep') === 'true' ? 60 : 7
+
   for (const account of accounts) {
     try {
       if (account.platform === 'META') {
-        await syncMetaAccount(account.id)
+        await syncMetaAccount(account.id, syncDays)
       } else {
-        await syncGoogleAccount(account.id)
+        await syncGoogleAccount(account.id, syncDays)
       }
       results.push({ id: account.id, platform: account.platform, status: 'success' })
     } catch (err: any) {

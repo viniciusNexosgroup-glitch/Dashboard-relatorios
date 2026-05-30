@@ -19,13 +19,13 @@ const metaApi = axios.create({ timeout: 60_000 })
 // delete+create de daily metrics.
 const syncingAccounts = new Set<string>()
 
-// Returns a time_range covering the last 60 days through today in São Paulo TZ.
+// Regular sync: last 7 days — covers most attribution windows and minimises Disk IO.
+// Deep sync (weekly): last 60 days — catches retroactive attribution updates from Meta.
 // Use this instead of `date_preset: 'last_30d'`, which excludes today.
-function getSyncTimeRange(): string {
+function getSyncTimeRange(days = 7): string {
   const now = new Date()
   const until = formatSPDate(now)
-  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
-  const since = formatSPDate(sixtyDaysAgo)
+  const since = formatSPDate(new Date(now.getTime() - days * 24 * 60 * 60 * 1000))
   return JSON.stringify({ since, until })
 }
 
@@ -121,7 +121,7 @@ async function upsertAdRecord(
   adExternalToDbId.set(ad.id, dbAd.id)
 }
 
-export async function syncMetaAccount(adAccountId: string) {
+export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
   // Lock: impede sync concorrente da mesma conta (race condition no delete+create de metrics)
   if (syncingAccounts.has(adAccountId)) {
     throw new Error('Sync já em andamento para esta conta — aguarde')
@@ -168,7 +168,7 @@ export async function syncMetaAccount(adAccountId: string) {
     for (const r of campaignResults) campaignExternalToDb.set(r.externalId, r.dbId)
 
     // ── 2. Campaign insights — covers last 60 days through today (SP timezone) ──
-    const timeRange = getSyncTimeRange()
+    const timeRange = getSyncTimeRange(syncDays)
     const campaignInsights = await fetchAllPages(
       `${META_API_BASE}/${accountExternalId}/insights`,
       {

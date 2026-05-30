@@ -12,9 +12,10 @@ const TZ = 'America/Sao_Paulo'
 
 let scheduled = false
 
-async function runSyncAllAccounts(triggerLabel: string) {
+// syncDays=7 for daily syncs (low IO), syncDays=60 for the weekly deep sync (catches retroactive attribution)
+async function runSyncAllAccounts(triggerLabel: string, syncDays = 7) {
   const tag = `[cron ${triggerLabel}]`
-  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
+  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${new Date().toLocaleString('pt-BR', { timeZone: TZ })} (janela: ${syncDays} dias)`)
 
   // ── Etapa 1: Garante token Meta fresco antes de qualquer chamada ──
   console.log(`${tag} [1/3] verificando token Meta...`)
@@ -35,8 +36,8 @@ async function runSyncAllAccounts(triggerLabel: string) {
   let ok = 0, fail = 0
   for (const account of accounts) {
     try {
-      if (account.platform === 'META') await syncMetaAccount(account.id)
-      else await syncGoogleAccount(account.id)
+      if (account.platform === 'META') await syncMetaAccount(account.id, syncDays)
+      else await syncGoogleAccount(account.id, syncDays)
       ok++
     } catch (err: any) {
       console.error(`${tag} sync error ${account.id}:`, err.message)
@@ -93,6 +94,31 @@ async function runRefreshMetaToken() {
   }
 }
 
+// Retém 90 dias de métricas (cobre o filtro lastMonth que vai até ~60 dias atrás).
+// Retém 30 dias de sync_logs (histórico operacional suficiente).
+const METRICS_RETENTION_DAYS = 90
+const SYNC_LOG_RETENTION_DAYS = 30
+
+async function cleanOldData() {
+  const tag = '[cron cleanup]'
+  const now = new Date()
+  const metricsCutoff = new Date(now.getTime() - METRICS_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+  const syncLogCutoff = new Date(now.getTime() - SYNC_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+
+  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${now.toLocaleString('pt-BR', { timeZone: TZ })}`)
+  try {
+    const [metrics, logs] = await Promise.all([
+      prisma.dailyMetric.deleteMany({ where: { date: { lt: metricsCutoff } } }),
+      prisma.syncLog.deleteMany({ where: { startedAt: { lt: syncLogCutoff } } }),
+    ])
+    console.log(`${tag} daily_metrics removidos: ${metrics.count} (data < ${metricsCutoff.toLocaleDateString('pt-BR')})`)
+    console.log(`${tag} sync_logs removidos: ${logs.count} (> ${SYNC_LOG_RETENTION_DAYS} dias)`)
+  } catch (err: any) {
+    console.error(`${tag} falhou:`, err.message)
+  }
+  console.log(`${tag} ━━━━━━━━ FIM ━━━━━━━━`)
+}
+
 export function startCronJobs() {
   if (scheduled) return
   scheduled = true
@@ -122,5 +148,13 @@ export function startCronJobs() {
     })
   }, { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08/14/20h, monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min (SP)')
+  // Sync profundo semanal — sábado às 01:00 SP: janela de 60 dias para pegar atualizações
+  // retroativas de atribuição do Meta (conversões podem ser atribuídas até 28 dias após o clique).
+  // Roda antes do cleanup (domingo 02:00) para não deletar dados que acabaram de ser sincronizados.
+  cron.schedule('0 1 * * 6', () => runSyncAllAccounts('deep-60d', 60), { timezone: TZ })
+
+  // Cleanup semanal — domingo às 02:00 SP (mantém 90 dias de métricas, 30 dias de sync_logs)
+  cron.schedule('0 2 * * 0', () => cleanOldData(), { timezone: TZ })
+
+  console.log('[cron] scheduled: sync 08/14/20h (7d), deep sync sábado 01:00 (60d), monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
 }

@@ -57,7 +57,7 @@ function getGoogleErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Erro desconhecido'
 }
 
-export async function syncGoogleAccount(adAccountId: string) {
+export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
   if (!account) throw new Error('Conta Google Ads não encontrada')
 
@@ -78,6 +78,11 @@ export async function syncGoogleAccount(adAccountId: string) {
   })
 
   try {
+    const until = new Date()
+    const since = new Date(until.getTime() - syncDays * 24 * 60 * 60 * 1000)
+    const sinceStr = since.toISOString().split('T')[0]
+    const untilStr = until.toISOString().split('T')[0]
+
     const query = `
       SELECT
         campaign.id,
@@ -95,7 +100,7 @@ export async function syncGoogleAccount(adAccountId: string) {
         metrics.conversion_rate,
         segments.date
       FROM campaign
-      WHERE segments.date DURING LAST_30_DAYS
+      WHERE segments.date BETWEEN '${sinceStr}' AND '${untilStr}'
         AND campaign.status != 'REMOVED'
       ORDER BY segments.date DESC
     `
