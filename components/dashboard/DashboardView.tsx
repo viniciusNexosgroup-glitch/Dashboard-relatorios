@@ -50,8 +50,6 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Clientes já auto-sincronizados nesta sessão — evita disparar sync toda vez que o usuário troca de cliente
-  const autoSyncedRef = useRef<Set<string>>(new Set())
 
   function showToast(type: 'success' | 'error', message: string) {
     // Cancela timer anterior pra não limpar o toast novo prematuramente
@@ -68,36 +66,12 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   }, [])
 
   useEffect(() => {
-    if (!selectedClient) return
-    fetchMetrics()
-
-    // Auto-sync só uma vez por cliente por sessão: evita disparar sync toda vez que o usuário
-    // troca de cliente. Se já sincronizou nessa sessão, só carrega os dados do banco.
-    if (autoSyncedRef.current.has(selectedClient)) return
-    const clientLastSync = lastSyncByClient[selectedClient]
-    const lastSyncDate = clientLastSync ? new Date(clientLastSync) : null
-    const stale = !lastSyncDate || (Date.now() - lastSyncDate.getTime()) > 30 * 60 * 1000
-    if (stale) {
-      autoSyncedRef.current.add(selectedClient)
-      handleSync()
-    }
+    if (selectedClient) fetchMetrics()
   }, [selectedClient])
 
   useEffect(() => {
     if (selectedClient) fetchMetrics()
   }, [dateFilter])
-
-  // Ref pra sempre chamar a versão mais recente de handleSync (evita stale closure no setInterval)
-  const handleSyncRef = useRef<() => Promise<void>>(() => Promise.resolve())
-  useEffect(() => {
-    handleSyncRef.current = handleSync
-  })
-
-  // Auto-sync every 30 minutes in background while page is open
-  useEffect(() => {
-    const interval = setInterval(() => handleSyncRef.current(), 30 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
 
   async function fetchMetrics() {
     if (!selectedClient) return
