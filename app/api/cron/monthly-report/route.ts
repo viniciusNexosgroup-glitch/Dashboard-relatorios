@@ -2,34 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { generateReportPDF } from '@/lib/pdf-generator'
 import { sendDocumentMessage } from '@/lib/evolution-api'
-import { syncMetaAccount } from '@/lib/meta-ads'
-import { syncGoogleAccount } from '@/lib/google-ads'
 import { formatDate, getDateRange } from '@/lib/utils'
 import { buildReportData } from '@/lib/report-builder'
 
 export const maxDuration = 300
 
-// Called on day 1 of each month: syncs all accounts, then sends the previous month's report.
+// Called on day 1 of each month: sends the previous month's report.
+// NÃO sincroniza as contas aqui — os crons das 08h/14h/20h já mantêm os dados frescos
+// (no dia 1 às 09:30 o sync das 08h já rodou). Sincronizar tudo aqui gerava um pico de
+// Disk IO que derrubava a instância do Supabase. Mantemos o envio leve: ler + PDF + WhatsApp.
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // ── 1. Sync all active accounts FIRST so reports go out with fresh data ──
-  const allAccounts = await prisma.adAccount.findMany({ where: { active: true } })
-  const syncResults: any[] = []
-  for (const account of allAccounts) {
-    try {
-      if (account.platform === 'META') await syncMetaAccount(account.id)
-      else await syncGoogleAccount(account.id)
-      syncResults.push({ accountId: account.id, platform: account.platform, status: 'synced' })
-    } catch (err: any) {
-      syncResults.push({ accountId: account.id, platform: account.platform, status: 'sync_error', error: err.message })
-    }
-  }
-
-  // ── 2. Now generate and send the previous month's report ──
+  // ── Generate and send the previous month's report ──
   const { start, end } = getDateRange('lastMonth')
   const periodLabel = `${formatDate(start)} a ${formatDate(end)}`
 
@@ -128,7 +116,6 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    sync: { synced: syncResults.filter((r) => r.status === 'synced').length, errors: syncResults.filter((r) => r.status === 'sync_error').length, details: syncResults },
-    reports: { processed: statuses.length, statuses },
+    reports: { processed: statuses.length, sent: sentCount, statuses },
   })
 }
