@@ -9,7 +9,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
-  const tokenExpiresAt = await getMetaTokenExpiresAt()
+  // Badge do token é informação secundária — se o banco estiver lento/instável,
+  // não deve derrubar o dashboard inteiro. Falha silenciosa → badge mostra "não renovado".
+  let tokenExpiresAt: Date | null = null
+  try {
+    tokenExpiresAt = await getMetaTokenExpiresAt()
+  } catch (err) {
+    console.error('[dashboard layout] falha ao buscar token expiry (DB?):', err)
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
