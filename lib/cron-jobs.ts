@@ -123,10 +123,14 @@ export function startCronJobs() {
   if (scheduled) return
   scheduled = true
 
-  // Sync 3x per day — 08:00, 14:00, 20:00 (São Paulo)
-  cron.schedule('0 8 * * *', () => runSyncAllAccounts('08:00'), { timezone: TZ })
-  cron.schedule('0 14 * * *', () => runSyncAllAccounts('14:00'), { timezone: TZ })
-  cron.schedule('0 20 * * *', () => runSyncAllAccounts('20:00'), { timezone: TZ })
+  // Sync escalonado pra minimizar Disk IO (Supabase free tier):
+  // - 08:00 → run COMPLETO (7 dias): pega atribuicoes recentes do Meta uma vez por dia
+  // - 14:00 e 20:00 → runs LEVES (1 dia): so refrescam "hoje" enquanto o dia corre
+  // Dias antigos quase nao mudam, entao reescreve-los 3x/dia era desperdicio de IO.
+  // O sync profundo de sabado (60d) cobre qualquer atribuicao retroativa mais antiga.
+  cron.schedule('0 8 * * *', () => runSyncAllAccounts('08:00', 7), { timezone: TZ })
+  cron.schedule('0 14 * * *', () => runSyncAllAccounts('14:00-leve', 1), { timezone: TZ })
+  cron.schedule('0 20 * * *', () => runSyncAllAccounts('20:00-leve', 1), { timezone: TZ })
 
   // Monthly report — day 1 at 09:30 (sync das 08:00 ja deve ter terminado mesmo com muitos clientes)
   cron.schedule('30 9 1 * *', () => runMonthlyReport(), { timezone: TZ })
@@ -156,5 +160,5 @@ export function startCronJobs() {
   // Cleanup semanal — domingo às 02:00 SP (mantém 90 dias de métricas, 30 dias de sync_logs)
   cron.schedule('0 2 * * 0', () => cleanOldData(), { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08/14/20h (7d), deep sync sábado 01:00 (60d), monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
+  console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
 }
