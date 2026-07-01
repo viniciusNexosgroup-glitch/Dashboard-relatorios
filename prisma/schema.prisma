@@ -39,6 +39,8 @@ model Client {
   // Controles de envio automatico no grupo WhatsApp (independentes)
   alertsEnabled   Boolean   @default(true)  // alertas de saldo baixo
   reportsEnabled  Boolean   @default(true)  // relatorio mensal automatico
+  // Dashboard publico compartilhavel: token aleatorio -> /shared/{token}. null = sem link ativo.
+  shareToken      String?   @unique
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
