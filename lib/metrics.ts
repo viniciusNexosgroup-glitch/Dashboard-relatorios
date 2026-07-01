@@ -4,6 +4,29 @@ import { getResultByObjective } from './result-by-objective'
 // Fonte unica de verdade da agregacao de metricas por cliente + periodo.
 // Usada pela area logada (/api/metrics) e pelo dashboard publico (/api/shared/[token]/metrics).
 
+// ── Helpers para a arvore hierarquica (campanha -> conjunto -> anuncio) ──
+type RawAgg = {
+  spend: number; impressions: number; leads: number; msgConv: number
+  conversions: number; profileVisits: number; landingPageViews: number; linkClicks: number
+}
+const emptyAgg = (): RawAgg => ({ spend: 0, impressions: 0, leads: 0, msgConv: 0, conversions: 0, profileVisits: 0, landingPageViews: 0, linkClicks: 0 })
+function addMetric(agg: RawAgg, m: any) {
+  agg.spend += m.spend; agg.impressions += m.impressions
+  agg.leads += m.leads; agg.msgConv += (m.msgConversations || 0); agg.conversions += m.conversions
+  agg.profileVisits += (m.profileVisits || 0); agg.landingPageViews += (m.landingPageViews || 0); agg.linkClicks += (m.linkClicks || 0)
+}
+function addAgg(dst: RawAgg, src: RawAgg) {
+  dst.spend += src.spend; dst.impressions += src.impressions; dst.leads += src.leads; dst.msgConv += src.msgConv
+  dst.conversions += src.conversions; dst.profileVisits += src.profileVisits; dst.landingPageViews += src.landingPageViews; dst.linkClicks += src.linkClicks
+}
+function nodeMetrics(objective: string | null | undefined, agg: RawAgg) {
+  const r = getResultByObjective(objective, {
+    leads: agg.leads, msgConv: agg.msgConv, conversions: agg.conversions,
+    profileVisits: agg.profileVisits, landingPageViews: agg.landingPageViews, linkClicks: agg.linkClicks,
+  })
+  return { spend: agg.spend, resultCount: r.count, resultLabel: r.label, cpr: r.count > 0 ? agg.spend / r.count : null, linkClicks: agg.linkClicks }
+}
+
 export interface ComputeMetricsInput {
   clientId: string
   start: Date
@@ -178,6 +201,50 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
     return b.spend - a.spend
   })
 
+  // Arvore hierarquica campanha -> conjunto -> anuncio (para tabela expansivel).
+  // Agrega de baixo pra cima (anuncio -> conjunto -> campanha) para os totais baterem.
+  // Inclui entidades com atividade no periodo (spend/impressions > 0), com o status real
+  // de cada uma (Ativo/Pausado). Campanhas sem dados de anuncio (ex: Google) viram folha.
+  const tree: any[] = []
+  for (const account of adAccounts) {
+    for (const campaign of account.campaigns) {
+      const objective = campaign.objective
+      const adSetNodes: any[] = []
+      const campAgg = emptyAgg()
+
+      for (const adSet of (campaign as any).adSets || []) {
+        const adNodes: any[] = []
+        const setAgg = emptyAgg()
+        for (const ad of adSet.ads || []) {
+          const adAgg = emptyAgg()
+          for (const m of ad.dailyMetrics) addMetric(adAgg, m)
+          if (adAgg.spend > 0 || adAgg.impressions > 0) {
+            adNodes.push({ id: ad.id, name: ad.name, status: ad.status, thumbnailUrl: ad.thumbnailUrl || null, ...nodeMetrics(objective, adAgg) })
+            addAgg(setAgg, adAgg)
+          }
+        }
+        if (adNodes.length > 0) {
+          adNodes.sort((a, b) => b.spend - a.spend)
+          adSetNodes.push({ id: adSet.id, name: adSet.name, status: adSet.status, ...nodeMetrics(objective, setAgg), ads: adNodes })
+          addAgg(campAgg, setAgg)
+        }
+      }
+
+      if (adSetNodes.length > 0) {
+        adSetNodes.sort((a, b) => b.spend - a.spend)
+        tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, campAgg), adSets: adSetNodes })
+      } else {
+        // Sem dados de anuncio — usa metricas da propria campanha (ex: Google Ads)
+        const cAgg = emptyAgg()
+        for (const m of campaign.dailyMetrics) addMetric(cAgg, m)
+        if (cAgg.spend > 0 || cAgg.impressions > 0) {
+          tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, cAgg), adSets: [] })
+        }
+      }
+    }
+  }
+  tree.sort((a, b) => b.spend - a.spend)
+
   // Snapshot financeiro das contas (secao "Saldo da Conta").
   // Apenas campos seguros — este payload alimenta o dashboard PUBLICO, entao NAO
   // inclui fundingDisplay (pode ter final do cartao) nem gasto total/moeda.
@@ -209,6 +276,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
     byPlatform,
     campaigns,
     ads,
+    tree,
     chartData,
     accounts,
   }

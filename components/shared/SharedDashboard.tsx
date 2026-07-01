@@ -5,6 +5,7 @@ import { formatCurrency, formatNumber, formatPercent, formatDate } from '@/lib/u
 import {
   DollarSign, MessageSquare, Eye, Users, MousePointerClick, BarChart3,
   Wallet, Calendar, Infinity as InfinityIcon, RefreshCw, Image as ImageIcon,
+  ChevronRight,
 } from 'lucide-react'
 
 const PERIODS = [
@@ -34,6 +35,7 @@ interface SharedData {
   period: { key: string; start: string; end: string }
   summary: any
   campaigns: any[]
+  tree: any[]
   ads: any[]
   accounts: any[]
 }
@@ -63,6 +65,15 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
   const [period, setPeriod] = useState(initialPeriod)
   const [loading, setLoading] = useState(false)
   const [showPeriods, setShowPeriods] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  function toggle(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   async function changePeriod(key: string) {
     setShowPeriods(false)
@@ -92,10 +103,25 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
     { label: 'CTR Médio', value: formatPercent(s.avgCtr || 0), icon: MousePointerClick },
   ]
 
-  const campaigns = data.campaigns || []
-  const totalSpend = campaigns.reduce((a, c) => a + c.spend, 0)
-  const totalResults = campaigns.reduce((a, c) => a + (c.resultCount || 0), 0)
-  const totalLinkClicks = campaigns.reduce((a, c) => a + (c.linkClicks || 0), 0)
+  const tree = data.tree || []
+  const totalSpend = tree.reduce((a, c) => a + c.spend, 0)
+  const totalResults = tree.reduce((a, c) => a + (c.resultCount || 0), 0)
+  const totalLinkClicks = tree.reduce((a, c) => a + (c.linkClicks || 0), 0)
+
+  // Achata a arvore em linhas visiveis conforme o que esta expandido
+  type Row = { level: number; node: any; hasChildren: boolean; kind: 'camp' | 'set' | 'ad' }
+  const rows: Row[] = []
+  for (const camp of tree) {
+    rows.push({ level: 0, node: camp, hasChildren: (camp.adSets?.length || 0) > 0, kind: 'camp' })
+    if (expanded.has(camp.id)) {
+      for (const set of camp.adSets || []) {
+        rows.push({ level: 1, node: set, hasChildren: (set.ads?.length || 0) > 0, kind: 'set' })
+        if (expanded.has(set.id)) {
+          for (const ad of set.ads || []) rows.push({ level: 2, node: ad, hasChildren: false, kind: 'ad' })
+        }
+      }
+    }
+  }
 
   const topAds = (data.ads || []).slice(0, 6)
   const balanceAccounts = (data.accounts || []).filter((a) => a.balance != null || a.fundingType)
@@ -172,13 +198,15 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
           </div>
         </section>
 
-        {/* Tabela de Campanhas */}
+        {/* Tabela de Campanhas (expansivel: campanha -> conjunto -> anuncio) */}
         <section>
           <SectionTitle>Tabela de Campanhas</SectionTitle>
           <div className="bg-[#111f38] border border-slate-700/50 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-700/50">
-              <p className="text-white font-semibold">Tabela de Campanhas</p>
-              <p className="text-xs text-slate-400 mt-0.5">{campaigns.length} campanhas encontradas</p>
+            <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
+              <div>
+                <p className="text-white font-semibold">Tabela de Campanhas</p>
+                <p className="text-xs text-slate-400 mt-0.5">{tree.length} campanhas encontradas · clique para expandir</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -193,27 +221,45 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {campaigns.map((c, i) => (
-                    <tr key={i} className="hover:bg-slate-800/30">
-                      <td className="px-5 py-3">
-                        <p className="text-slate-100 font-medium">{c.name}</p>
-                        <p className="text-[11px] text-slate-500">{c.platform === 'META' ? 'Meta' : 'Google'}</p>
+                  {rows.map(({ level, node, hasChildren, kind }) => (
+                    <tr
+                      key={`${kind}-${node.id}`}
+                      className={`hover:bg-slate-800/40 ${level === 1 ? 'bg-slate-800/10' : level === 2 ? 'bg-slate-800/20' : ''} ${hasChildren ? 'cursor-pointer' : ''}`}
+                      onClick={hasChildren ? () => toggle(node.id) : undefined}
+                    >
+                      <td className="py-3 pr-3" style={{ paddingLeft: 20 + level * 22 }}>
+                        <div className="flex items-center gap-2">
+                          {hasChildren ? (
+                            <ChevronRight className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${expanded.has(node.id) ? 'rotate-90' : ''}`} />
+                          ) : (
+                            <span className="w-4 shrink-0" />
+                          )}
+                          {kind === 'ad' && (
+                            node.thumbnailUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={node.thumbnailUrl} alt="" className="w-7 h-7 rounded object-cover bg-slate-800 shrink-0" />
+                            ) : (
+                              <span className="w-7 h-7 rounded bg-slate-800 shrink-0 inline-flex items-center justify-center"><ImageIcon className="w-3.5 h-3.5 text-slate-600" /></span>
+                            )
+                          )}
+                          <span className={`truncate ${level === 0 ? 'text-slate-100 font-medium' : 'text-slate-300'}`}>{node.name}</span>
+                        </div>
                       </td>
-                      <td className="px-3 py-3">{statusBadge(c.status)}</td>
-                      <td className="px-3 py-3 text-right text-slate-200">{formatCurrency(c.spend)}</td>
+                      <td className="px-3 py-3">{statusBadge(node.status)}</td>
+                      <td className="px-3 py-3 text-right text-slate-200">{formatCurrency(node.spend)}</td>
                       <td className="px-3 py-3 text-right">
-                        <span className="text-slate-100">{formatNumber(c.resultCount || 0)}</span>
-                        {c.resultLabel && <span className="block text-[10px] text-slate-500">{c.resultLabel}</span>}
+                        <span className="text-slate-100">{formatNumber(node.resultCount || 0)}</span>
+                        {node.resultLabel && <span className="block text-[10px] text-slate-500">{node.resultLabel}</span>}
                       </td>
-                      <td className="px-3 py-3 text-right text-slate-200">{c.cpr != null ? formatCurrency(c.cpr) : '—'}</td>
-                      <td className="px-5 py-3 text-right text-slate-200">{formatNumber(c.linkClicks || 0)}</td>
+                      <td className="px-3 py-3 text-right text-slate-200">{node.cpr != null ? formatCurrency(node.cpr) : '—'}</td>
+                      <td className="px-5 py-3 text-right text-slate-200">{formatNumber(node.linkClicks || 0)}</td>
                     </tr>
                   ))}
-                  {campaigns.length === 0 && (
+                  {tree.length === 0 && (
                     <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">Sem campanhas no período</td></tr>
                   )}
                 </tbody>
-                {campaigns.length > 0 && (
+                {tree.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-slate-700 bg-[#16233d]/50 font-semibold text-slate-100">
                       <td className="px-5 py-3">Total</td>
