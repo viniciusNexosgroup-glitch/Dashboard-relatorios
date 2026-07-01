@@ -181,6 +181,28 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
       }
     )
 
+    // Recupera metadados de campanhas que RODARAM (aparecem nos insights) mas nao vieram
+    // na lista de /campaigns (ex: pausadas/arquivadas). Sem isso, suas metricas eram
+    // descartadas (dbId null) e a campanha sumia do dashboard. Busca nome + status atual.
+    const insightCampaignIds = Array.from(new Set(campaignInsights.map((d: any) => d.campaign_id).filter(Boolean)))
+    const missingCampaigns = insightCampaignIds.filter((cid) => !campaignExternalToDb.has(cid))
+    await parallelMap(missingCampaigns, 10, async (campaignId) => {
+      try {
+        const cRes = await metaApi.get(`${META_API_BASE}/${campaignId}`, {
+          params: { access_token: token, fields: 'id,name,status,objective' },
+        })
+        const c = cRes.data
+        const db = await prisma.campaign.upsert({
+          where: { adAccountId_externalId: { adAccountId, externalId: c.id } },
+          update: { name: c.name, status: c.status, objective: c.objective },
+          create: { adAccountId, externalId: c.id, name: c.name, status: c.status, objective: c.objective },
+        })
+        campaignExternalToDb.set(c.id, db.id)
+      } catch {
+        // Se nao der pra buscar, a metrica dessa campanha e' ignorada (comportamento antigo)
+      }
+    })
+
     const campaignMetrics = campaignInsights
       .map((day) => {
         const dbId = campaignExternalToDb.get(day.campaign_id)
