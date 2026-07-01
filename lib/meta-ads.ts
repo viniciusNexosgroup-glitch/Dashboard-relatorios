@@ -243,8 +243,9 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
         }
       }
 
-      // ── 5. Batch fetch thumbnails for all ad IDs (50 per call) ──
+      // ── 5. Batch fetch thumbnails + nome/status atual dos anuncios (50 per call) ──
       const thumbnailMap = new Map<string, string | null>()
+      const adStatusMap = new Map<string, string>()
       const allAdIds = Array.from(uniqueAds.keys())
       for (let i = 0; i < allAdIds.length; i += 50) {
         const batch = allAdIds.slice(i, i + 50)
@@ -253,15 +254,33 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
             params: {
               access_token: token,
               ids: batch.join(','),
-              fields: 'creative{thumbnail_url,image_url}',
+              fields: 'name,status,creative{thumbnail_url,image_url}',
             },
           })
           for (const [id, ad] of Object.entries(res.data as Record<string, any>)) {
             const creative = ad.creative
             thumbnailMap.set(id, creative?.thumbnail_url || creative?.image_url || null)
+            if (ad.status) adStatusMap.set(id, ad.status)
           }
         } catch {
-          // Thumbnails are optional — failure shouldn't block the sync
+          // Thumbnails/status sao opcionais — falha nao bloqueia o sync
+        }
+      }
+
+      // ── 5b. Batch fetch nome + status atual dos conjuntos (ad sets) ──
+      const adSetMetaMap = new Map<string, { name: string; status: string }>()
+      const allAdSetIds = Array.from(new Set(Array.from(uniqueAds.values()).map((a) => a.adset_id)))
+      for (let i = 0; i < allAdSetIds.length; i += 50) {
+        const batch = allAdSetIds.slice(i, i + 50)
+        try {
+          const res = await metaApi.get(META_API_BASE, {
+            params: { access_token: token, ids: batch.join(','), fields: 'name,status' },
+          })
+          for (const [id, as] of Object.entries(res.data as Record<string, any>)) {
+            adSetMetaMap.set(id, { name: as.name || id, status: as.status || 'UNKNOWN' })
+          }
+        } catch {
+          // metadata opcional — nao bloqueia o sync
         }
       }
 
@@ -296,10 +315,13 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
         if (!uniqueAdSets.has(ad.adset_id)) uniqueAdSets.set(ad.adset_id, campaignDbId)
       }
       await parallelMap(Array.from(uniqueAdSets.entries()), 20, async ([adsetExternalId, campaignDbId]) => {
+        const meta = adSetMetaMap.get(adsetExternalId)
+        const name = meta?.name || adsetExternalId
+        const status = meta?.status || 'UNKNOWN'
         const dbAdSet = await prisma.adSet.upsert({
           where: { campaignId_externalId: { campaignId: campaignDbId, externalId: adsetExternalId } },
-          update: {},
-          create: { campaignId: campaignDbId, externalId: adsetExternalId, name: adsetExternalId, status: 'UNKNOWN' },
+          update: { name, status },
+          create: { campaignId: campaignDbId, externalId: adsetExternalId, name, status },
         })
         adSetExternalToDbId.set(adsetExternalId, dbAdSet.id)
       })
@@ -309,10 +331,11 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
         const adSetDbId = adSetExternalToDbId.get(ad.adset_id)
         if (!adSetDbId) return
         const thumbnailUrl = thumbnailMap.get(ad.ad_id) ?? null
+        const status = adStatusMap.get(ad.ad_id) || 'UNKNOWN'
         const dbAd = await prisma.ad.upsert({
           where: { adSetId_externalId: { adSetId: adSetDbId, externalId: ad.ad_id } },
-          update: { name: ad.ad_name, thumbnailUrl },
-          create: { adSetId: adSetDbId, externalId: ad.ad_id, name: ad.ad_name, status: 'UNKNOWN', thumbnailUrl },
+          update: { name: ad.ad_name, thumbnailUrl, status },
+          create: { adSetId: adSetDbId, externalId: ad.ad_id, name: ad.ad_name, status, thumbnailUrl },
         })
         adExternalToDbId.set(ad.ad_id, dbAd.id)
       })
