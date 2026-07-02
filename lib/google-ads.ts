@@ -139,9 +139,12 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
         },
       })
 
+      // API REST do Google retorna int64 como STRING ("445") e conversions como float
+      // (atribuição data-driven gera frações) — normaliza pros tipos do schema (Int)
       const spend = (metrics.costMicros || 0) / 1_000_000
-      const clicks = metrics.clicks || 0
-      const conversions = metrics.conversions || 0
+      const impressions = parseInt(metrics.impressions || '0', 10)
+      const clicks = parseInt(metrics.clicks || '0', 10)
+      const conversions = Math.round(Number(metrics.conversions || 0))
       const roas =
         metrics.conversionsValue && spend > 0 ? metrics.conversionsValue / spend : null
 
@@ -149,7 +152,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
         where: { id: `${dbCampaign.id}-${row.segments.date}` },
         update: {
           spend,
-          impressions: metrics.impressions || 0,
+          impressions,
           clicks,
           ctr: (metrics.ctr || 0) * 100,
           cpc: (metrics.averageCpc || 0) / 1_000_000,
@@ -164,7 +167,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
           campaignId: dbCampaign.id,
           date,
           spend,
-          impressions: metrics.impressions || 0,
+          impressions,
           clicks,
           ctr: (metrics.ctr || 0) * 100,
           cpc: (metrics.averageCpc || 0) / 1_000_000,
