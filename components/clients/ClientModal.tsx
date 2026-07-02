@@ -1,7 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Loader2, MessageSquare, RefreshCw, CheckSquare, Square, AlertCircle } from 'lucide-react'
+import { X, Loader2, MessageSquare, RefreshCw, CheckSquare, Square, AlertCircle, Trash2 } from 'lucide-react'
+
+interface LinkedAccount {
+  id: string
+  platform: string
+  accountId: string
+  accountName: string
+  active: boolean
+}
 
 interface Client {
   id: string
@@ -10,6 +18,7 @@ interface Client {
   whatsappGroup: string | null
   whatsappGroupName: string | null
   notes: string | null
+  adAccounts?: LinkedAccount[]
 }
 
 interface MetaAccount {
@@ -69,12 +78,14 @@ export function ClientModal({ client, onClose, onSave }: Props) {
   const [googleSearch, setGoogleSearch] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
 
+  // Contas já vinculadas (modo edição) — permite desvincular e filtra os seletores
+  const [linked, setLinked] = useState<LinkedAccount[]>(client?.adAccounts || [])
+  const linkedIds = new Set(linked.map((a) => `${a.platform}:${a.accountId}`))
+
   useEffect(() => {
     fetchGroups()
-    if (!isEditing) {
-      fetchMetaAccounts()
-      fetchGoogleAccounts()
-    }
+    fetchMetaAccounts()
+    fetchGoogleAccounts()
   }, [])
 
   async function fetchGroups(force = false) {
@@ -135,6 +146,16 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     })
   }
 
+  async function handleUnlink(acc: LinkedAccount) {
+    if (!confirm(`Desvincular "${acc.accountName}"? Isso remove as campanhas e métricas históricas dessa conta do dashboard.`)) return
+    await fetch('/api/ad-accounts', {
+      method: 'DELETE',
+      body: JSON.stringify({ id: acc.id }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    setLinked((prev) => prev.filter((a) => a.id !== acc.id))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -149,13 +170,15 @@ export function ClientModal({ client, onClose, onSave }: Props) {
     })
     const saved = await res.json()
 
-    if (!isEditing && saved.id) {
+    // Vincula contas selecionadas — tanto ao criar quanto ao editar
+    const targetClientId = isEditing ? client.id : saved.id
+    if (targetClientId) {
       for (const accId of selectedMeta) {
         const acc = metaAccounts.find((a) => a.id === accId)
         if (!acc) continue
         await fetch('/api/ad-accounts', {
           method: 'POST',
-          body: JSON.stringify({ clientId: saved.id, platform: 'META', accountId: acc.id, accountName: acc.name, accessToken: '__system__' }),
+          body: JSON.stringify({ clientId: targetClientId, platform: 'META', accountId: acc.id, accountName: acc.name, accessToken: '__system__' }),
           headers: { 'Content-Type': 'application/json' },
         })
       }
@@ -164,9 +187,17 @@ export function ClientModal({ client, onClose, onSave }: Props) {
         if (!acc) continue
         await fetch('/api/ad-accounts', {
           method: 'POST',
-          body: JSON.stringify({ clientId: saved.id, platform: 'GOOGLE', accountId: acc.id, accountName: acc.name, accessToken: '__system__', refreshToken: '__system__' }),
+          body: JSON.stringify({ clientId: targetClientId, platform: 'GOOGLE', accountId: acc.id, accountName: acc.name, accessToken: '__system__', refreshToken: '__system__' }),
           headers: { 'Content-Type': 'application/json' },
         })
+      }
+      // Sync em background das contas recém-vinculadas (primeiro sync faz backfill de 60 dias).
+      // Fire-and-forget: não trava o modal; os dados aparecem no dashboard em alguns minutos.
+      if (selectedMeta.size > 0) {
+        void fetch('/api/meta-ads/sync', { method: 'POST', body: JSON.stringify({ clientId: targetClientId }), headers: { 'Content-Type': 'application/json' } })
+      }
+      if (selectedGoogle.size > 0) {
+        void fetch('/api/google-ads/sync', { method: 'POST', body: JSON.stringify({ clientId: targetClientId }), headers: { 'Content-Type': 'application/json' } })
       }
     }
 
@@ -278,7 +309,30 @@ export function ClientModal({ client, onClose, onSave }: Props) {
               )}
             </div>
 
-            {!isEditing && (
+            {isEditing && linked.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Contas vinculadas</h3>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  {linked.map((acc, i) => (
+                    <div key={acc.id} className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? 'border-t border-gray-100' : ''}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${acc.platform === 'META' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                        {acc.platform === 'META' ? 'Meta' : 'Google'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{acc.accountName}</p>
+                        <p className="text-xs text-gray-400">{acc.accountId}</p>
+                      </div>
+                      <button type="button" onClick={() => handleUnlink(acc)} title="Desvincular conta"
+                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors shrink-0">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">📘 Contas Meta Ads</h3>
@@ -310,7 +364,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     placeholder="Pesquisar conta..."
                     className="w-full px-3 py-2 mb-2 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {metaAccounts.filter(a => a.name.toLowerCase().includes(metaSearch.toLowerCase()) || a.id.includes(metaSearch)).map((acc, i) => (
+                    {metaAccounts.filter(a => !linkedIds.has(`META:${a.id}`) && (a.name.toLowerCase().includes(metaSearch.toLowerCase()) || a.id.includes(metaSearch))).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleMeta(acc.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${selectedMeta.has(acc.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                         {selectedMeta.has(acc.id)
@@ -334,7 +388,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
               </div>
             )}
 
-            {!isEditing && (
+            {(
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">🔴 Contas Google Ads</h3>
@@ -366,7 +420,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
                     placeholder="Pesquisar conta..."
                     className="w-full px-3 py-2 mb-2 border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500" />
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {googleAccounts.filter(a => a.name.toLowerCase().includes(googleSearch.toLowerCase()) || a.formattedId.includes(googleSearch)).map((acc, i) => (
+                    {googleAccounts.filter(a => !linkedIds.has(`GOOGLE:${a.id}`) && (a.name.toLowerCase().includes(googleSearch.toLowerCase()) || a.formattedId.includes(googleSearch))).map((acc, i) => (
                       <button key={acc.id} type="button" onClick={() => toggleGoogle(acc.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${i > 0 ? 'border-t border-gray-100' : ''} ${selectedGoogle.has(acc.id) ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
                         {selectedGoogle.has(acc.id)

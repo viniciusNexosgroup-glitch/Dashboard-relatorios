@@ -15,7 +15,7 @@ interface Client {
   active: boolean
   alertsEnabled: boolean
   reportsEnabled: boolean
-  adAccounts: { id: string; platform: string; accountName: string; active: boolean }[]
+  adAccounts: { id: string; platform: string; accountId: string; accountName: string; active: boolean }[]
   _count: { reports: number }
 }
 
