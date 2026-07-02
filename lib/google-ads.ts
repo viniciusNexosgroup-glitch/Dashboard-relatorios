@@ -104,7 +104,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
         metrics.conversions,
         metrics.conversions_value,
         metrics.cost_per_conversion,
-        metrics.conversion_rate,
+        metrics.conversions_from_interactions_rate,
         segments.date
       FROM campaign
       WHERE segments.date BETWEEN '${sinceStr}' AND '${untilStr}'
@@ -156,7 +156,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
           cpm: (metrics.averageCpm || 0) / 1_000_000,
           conversions,
           costPerConv: (metrics.costPerConversion || 0) / 1_000_000,
-          convRate: (metrics.conversionRate || 0) * 100,
+          convRate: (metrics.conversionsFromInteractionsRate || 0) * 100,
           roas,
         },
         create: {
@@ -171,7 +171,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
           cpm: (metrics.averageCpm || 0) / 1_000_000,
           conversions,
           costPerConv: (metrics.costPerConversion || 0) / 1_000_000,
-          convRate: (metrics.conversionRate || 0) * 100,
+          convRate: (metrics.conversionsFromInteractionsRate || 0) * 100,
           roas,
         },
       })
