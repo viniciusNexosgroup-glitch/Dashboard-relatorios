@@ -62,6 +62,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   const byPlatform: Record<string, any> = {}
   const campaignMap = new Map<string, any>()
   const dailyMap = new Map<string, any>()
+  const dailyByPlatform: Record<string, Map<string, any>> = {}
 
   for (const account of adAccounts) {
     const platform = account.platform
@@ -108,6 +109,14 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
         const d = dailyMap.get(dateKey)!
         d.spend += m.spend; d.clicks += m.clicks; d.leads += m.leads
         d.msgConversations += msgConv; d.conversions += m.conversions
+
+        // Série diária POR PLATAFORMA (gráficos separados Meta/Google)
+        if (!dailyByPlatform[platform]) dailyByPlatform[platform] = new Map()
+        const pMap = dailyByPlatform[platform]
+        if (!pMap.has(dateKey)) pMap.set(dateKey, { date: dateKey, spend: 0, clicks: 0, leads: 0, msgConversations: 0, conversions: 0, costPerMsg: 0 })
+        const dp = pMap.get(dateKey)!
+        dp.spend += m.spend; dp.clicks += m.clicks; dp.leads += m.leads
+        dp.msgConversations += msgConv; dp.conversions += m.conversions
       }
 
       if (campSpend > 0 || campImpressions > 0) {
@@ -161,6 +170,13 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   const chartData = Array.from(dailyMap.values())
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((d) => ({ ...d, costPerMsg: d.msgConversations > 0 ? d.spend / d.msgConversations : 0 }))
+
+  const chartDataByPlatform: Record<string, any[]> = {}
+  for (const [plat, map] of Object.entries(dailyByPlatform)) {
+    chartDataByPlatform[plat] = Array.from(map.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((d) => ({ ...d, costPerMsg: d.msgConversations > 0 ? d.spend / d.msgConversations : 0 }))
+  }
 
   // Ad-level aggregation
   const adMap = new Map<string, any>()
@@ -286,6 +302,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
     ads,
     tree,
     chartData,
+    chartDataByPlatform,
     accounts,
   }
 }

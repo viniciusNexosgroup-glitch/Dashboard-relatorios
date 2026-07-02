@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
 import { MetricsChart } from '@/components/charts/MetricsChart'
 import { CampaignTable } from '@/components/dashboard/CampaignTable'
+import { GoogleCampaignTable } from '@/components/dashboard/GoogleCampaignTable'
 import { AdTable } from '@/components/dashboard/AdTable'
 import {
   DollarSign,
@@ -15,7 +16,21 @@ import {
   FileText,
   Send,
   MessageSquare,
+  Infinity as InfinityIcon,
+  BarChart3,
+  Target,
 } from 'lucide-react'
+
+function GoogleIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    </svg>
+  )
+}
 
 interface Client {
   id: string
@@ -166,18 +181,38 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
     }
   }
 
-  const s = metrics?.summary
+  // ── Métricas separadas por plataforma (Meta e Google não se misturam) ──
+  const meta = metrics?.byPlatform?.META
+  const google = metrics?.byPlatform?.GOOGLE
 
-  const cards = s
+  const metaCampaigns = (metrics?.campaigns || []).filter((c: any) => c.platform === 'META')
+  const googleCampaigns = (metrics?.campaigns || []).filter((c: any) => c.platform === 'GOOGLE')
+  const metaAds = (metrics?.ads || []).filter((a: any) => a.platform === 'META')
+
+  const hasMeta = metaCampaigns.length > 0 || (meta?.spend || 0) > 0
+  const hasGoogle = googleCampaigns.length > 0 || (google?.spend || 0) > 0
+
+  const metaCards = meta
     ? [
-        { label: 'Investimento Total', value: formatCurrency(s.totalSpend), icon: DollarSign, color: 'bg-indigo-500' },
-        { label: 'Impressões', value: formatNumber(s.totalImpressions), icon: Eye, color: 'bg-blue-500' },
-        { label: 'Cliques', value: formatNumber(s.totalClicks), icon: MousePointerClick, color: 'bg-cyan-500' },
-        { label: 'Conversas por mensagem', value: formatNumber(s.totalMsgConv || 0), icon: MessageSquare, color: 'bg-green-500' },
-        { label: 'Alcance', value: formatNumber(s.totalReach || 0), icon: Users, color: 'bg-purple-500' },
-        { label: 'CTR Médio', value: formatPercent(s.avgCtr), icon: MousePointerClick, color: 'bg-orange-500' },
-        { label: 'CPC Médio', value: formatCurrency(s.avgCpc), icon: DollarSign, color: 'bg-rose-500' },
-        { label: 'Custo por conversa por mensagem', value: s.avgCostPerMsg > 0 ? formatCurrency(s.avgCostPerMsg) : 'N/A', icon: MessageSquare, color: 'bg-teal-500' },
+        { label: 'Investimento', value: formatCurrency(meta.spend), icon: DollarSign, color: 'bg-indigo-500' },
+        { label: 'Conversas por mensagem', value: formatNumber(meta.msgConversations || 0), icon: MessageSquare, color: 'bg-green-500' },
+        { label: 'Custo por Conversa', value: (meta.costPerMsg || 0) > 0 ? formatCurrency(meta.costPerMsg) : 'N/A', icon: MessageSquare, color: 'bg-teal-500' },
+        { label: 'Impressões', value: formatNumber(meta.impressions), icon: Eye, color: 'bg-blue-500' },
+        { label: 'Alcance', value: formatNumber(meta.reach || 0), icon: Users, color: 'bg-purple-500' },
+        { label: 'Cliques', value: formatNumber(meta.clicks), icon: MousePointerClick, color: 'bg-cyan-500' },
+        { label: 'Frequência', value: (meta.frequency || 0).toFixed(2), icon: BarChart3, color: 'bg-amber-500' },
+        { label: 'CTR Médio', value: formatPercent(meta.ctr || 0), icon: MousePointerClick, color: 'bg-orange-500' },
+      ]
+    : []
+
+  const googleCards = google
+    ? [
+        { label: 'Investimento', value: formatCurrency(google.spend), icon: DollarSign, color: 'bg-indigo-500' },
+        { label: 'Conversões', value: formatNumber(google.conversions || 0), icon: Target, color: 'bg-green-500' },
+        { label: 'Custo por Conversão', value: (google.costPerConv || 0) > 0 ? formatCurrency(google.costPerConv) : 'N/A', icon: Target, color: 'bg-teal-500' },
+        { label: 'Cliques', value: formatNumber(google.clicks), icon: MousePointerClick, color: 'bg-cyan-500' },
+        { label: 'CPC Médio', value: formatCurrency(google.avgCpc || 0), icon: DollarSign, color: 'bg-rose-500' },
+        { label: 'CTR Médio', value: formatPercent(google.ctr || 0), icon: BarChart3, color: 'bg-orange-500' },
       ]
     : []
 
@@ -300,77 +335,82 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
 
       {selectedClient && !loading && !error && metrics && (
         <>
-          {/* Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {cards.map((card) => (
-              <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs text-gray-500 font-medium">{card.label}</p>
-                  <div className={`w-8 h-8 rounded-lg ${card.color} flex items-center justify-center`}>
-                    <card.icon className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold text-gray-900">{card.value}</p>
+          {/* ════════════ BLOCO META ADS ════════════ */}
+          {hasMeta && (
+            <>
+              <div className="flex items-center gap-2 pt-2">
+                <InfinityIcon className="w-6 h-6 text-blue-600" />
+                <h2 className="text-lg font-bold text-gray-900">Meta Ads</h2>
               </div>
-            ))}
-          </div>
 
-          {/* Chart */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Evolução de Métricas</h3>
-            <MetricsChart data={metrics.chartData || []} />
-          </div>
-
-          {/* Platform breakdown */}
-          <div className="grid grid-cols-2 gap-4">
-            {['META', 'GOOGLE'].map((platform) => {
-              const ps = metrics.byPlatform?.[platform]
-              if (!ps) return null
-              return (
-                <div key={platform} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={`w-2 h-2 rounded-full ${platform === 'META' ? 'bg-blue-500' : 'bg-red-500'}`} />
-                    <h3 className="text-sm font-semibold text-gray-700">
-                      {platform === 'META' ? 'Meta Ads' : 'Google Ads'}
-                    </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {metaCards.map((card) => (
+                  <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-gray-500 font-medium">{card.label}</p>
+                      <div className={`w-8 h-8 rounded-lg ${card.color} flex items-center justify-center`}>
+                        <card.icon className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xl font-bold text-gray-900">{card.value}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Investimento</p>
-                      <p className="font-bold text-gray-900">{formatCurrency(ps.spend)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Cliques</p>
-                      <p className="font-bold text-gray-900">{formatNumber(ps.clicks)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">CTR</p>
-                      <p className="font-bold text-gray-900">{formatPercent(ps.ctr)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Leads</p>
-                      <p className="font-bold text-gray-900">{formatNumber(ps.leads)}</p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Campaigns Table */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Campanhas</h3>
-            <CampaignTable campaigns={metrics.campaigns || []} />
-          </div>
-
-          {/* Ads Table */}
-          {(metrics.ads || []).length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-700">Anúncios no Período</h3>
-                <span className="text-xs text-gray-400">{(metrics.ads || []).length} anúncios</span>
+                ))}
               </div>
-              <AdTable ads={metrics.ads || []} />
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Evolução de Métricas — Meta</h3>
+                <MetricsChart data={metrics.chartDataByPlatform?.META || []} />
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Campanhas Meta</h3>
+                <CampaignTable campaigns={metaCampaigns} />
+              </div>
+
+              {metaAds.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-gray-700">Anúncios no Período</h3>
+                    <span className="text-xs text-gray-400">{metaAds.length} anúncios</span>
+                  </div>
+                  <AdTable ads={metaAds} />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ════════════ BLOCO GOOGLE ADS ════════════ */}
+          {hasGoogle && (
+            <>
+              <div className={`flex items-center gap-2 pt-2 ${hasMeta ? 'border-t border-gray-200 mt-2 pt-6' : ''}`}>
+                <GoogleIcon className="w-6 h-6" />
+                <h2 className="text-lg font-bold text-gray-900">Google Ads</h2>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {googleCards.map((card) => (
+                  <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-gray-500 font-medium">{card.label}</p>
+                      <div className={`w-8 h-8 rounded-lg ${card.color} flex items-center justify-center`}>
+                        <card.icon className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xl font-bold text-gray-900">{card.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Campanhas Google</h3>
+                <GoogleCampaignTable campaigns={googleCampaigns} />
+              </div>
+            </>
+          )}
+
+          {!hasMeta && !hasGoogle && (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
+              Sem dados no período selecionado
             </div>
           )}
         </>
