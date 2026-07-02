@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
 interface ReportData {
   client: { name: string; company: string }
   period: { start: Date; end: Date }
+  byPlatform?: Record<string, any>
   summary: {
     totalSpend: number
     totalImpressions: number
@@ -101,6 +102,7 @@ interface ReportData {
   campaigns: {
     name: string
     platform: string
+    objective?: string | null
     spend: number
     impressions: number
     reach?: number
@@ -157,8 +159,37 @@ function generateObservations(data: ReportData): string[] {
   return obs
 }
 
+const GOOGLE_CHANNEL_LABEL: Record<string, string> = {
+  SEARCH: 'Pesquisa', PERFORMANCE_MAX: 'Performance Max', DISPLAY: 'Display',
+  SHOPPING: 'Shopping', VIDEO: 'Vídeo', SMART: 'Smart', DEMAND_GEN: 'Demand Gen', MULTI_CHANNEL: 'Multicanal',
+}
+
 export async function generateReportPDF(data: ReportData): Promise<Buffer> {
   const obs = generateObservations(data)
+
+  // ── Separação por plataforma: bloco Meta quando há dados Meta;
+  //    bloco Google SÓ para clientes com conta Google com atividade no período ──
+  const meta = data.byPlatform?.META
+  const google = data.byPlatform?.GOOGLE
+  const metaCampaigns = data.campaigns.filter((c) => c.platform === 'META')
+  const googleCampaigns = data.campaigns.filter((c) => c.platform === 'GOOGLE')
+  const metaAds = (data.ads || []).filter((a) => a.platform === 'META')
+  const hasMeta = metaCampaigns.length > 0 || (meta?.spend || 0) > 0
+  const hasGoogle = googleCampaigns.length > 0 || (google?.spend || 0) > 0
+
+  const cardsRow = (cards: { label: string; value: string }[]) =>
+    React.createElement(
+      View,
+      { style: styles.cardsRow },
+      ...cards.map((card) =>
+        React.createElement(
+          View,
+          { style: styles.card, key: card.label },
+          React.createElement(Text, { style: styles.cardLabel }, card.label),
+          React.createElement(Text, { style: styles.cardValue }, card.value)
+        )
+      )
+    )
 
   const doc = React.createElement(
     Document,
@@ -185,52 +216,33 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
         )
       ),
 
-      // Summary Cards
-      React.createElement(
-        View,
-        { style: styles.section },
-        React.createElement(Text, { style: styles.sectionTitle }, 'RESUMO GERAL'),
+      // ── BLOCO META ADS — resumo ──
+      ...(hasMeta ? [
         React.createElement(
           View,
-          { style: styles.cardsRow },
-          ...[
-            { label: 'Investimento Total', value: formatCurrency(data.summary.totalSpend) },
-            { label: 'Impressões', value: formatNumber(data.summary.totalImpressions) },
-            { label: 'Cliques', value: formatNumber(data.summary.totalClicks) },
-            { label: 'Conversas', value: formatNumber(data.summary.totalMsgConv || 0) },
-          ].map((card) =>
-            React.createElement(
-              View,
-              { style: styles.card, key: card.label },
-              React.createElement(Text, { style: styles.cardLabel }, card.label),
-              React.createElement(Text, { style: styles.cardValue }, card.value)
-            )
-          )
+          { style: styles.section },
+          React.createElement(Text, { style: styles.sectionTitle }, 'META ADS — RESUMO'),
+          cardsRow([
+            { label: 'Investimento', value: formatCurrency(meta?.spend || 0) },
+            { label: 'Conversas', value: formatNumber(meta?.msgConversations || 0) },
+            { label: 'Custo por Conversa', value: (meta?.costPerMsg || 0) > 0 ? formatCurrency(meta?.costPerMsg || 0) : 'N/A' },
+            { label: 'Impressões', value: formatNumber(meta?.impressions || 0) },
+          ]),
+          cardsRow([
+            { label: 'Alcance', value: formatNumber(meta?.reach || 0) },
+            { label: 'Cliques', value: formatNumber(meta?.clicks || 0) },
+            { label: 'Frequência', value: (meta?.frequency || 0).toFixed(2) },
+            { label: 'CTR Médio', value: formatPercent(meta?.avgCtr || 0) },
+          ])
         ),
-        React.createElement(
-          View,
-          { style: styles.cardsRow },
-          ...[
-            { label: 'Alcance', value: formatNumber((data.summary as any).totalReach || 0) },
-            { label: 'CTR Médio', value: formatPercent(data.summary.avgCtr) },
-            { label: 'CPC Médio', value: formatCurrency(data.summary.avgCpc) },
-            { label: 'Custo por Conversa', value: (data.summary.avgCostPerMsg || 0) > 0 ? formatCurrency(data.summary.avgCostPerMsg!) : 'N/A' },
-          ].map((card) =>
-            React.createElement(
-              View,
-              { style: styles.card, key: card.label },
-              React.createElement(Text, { style: styles.cardLabel }, card.label),
-              React.createElement(Text, { style: styles.cardValue }, card.value)
-            )
-          )
-        )
-      ),
+      ] : []),
 
-      // Campaigns Table — mesmo layout do dashboard
+      // ── BLOCO META ADS — campanhas (mesmo layout do dashboard) ──
+      ...(hasMeta ? [
       React.createElement(
         View,
         { style: styles.section },
-        React.createElement(Text, { style: styles.sectionTitle }, 'CAMPANHAS'),
+        React.createElement(Text, { style: styles.sectionTitle }, 'CAMPANHAS — META'),
         React.createElement(
           View,
           { style: styles.table },
@@ -245,7 +257,7 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
             React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'VALOR'),
             React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'ALCANCE')
           ),
-          ...data.campaigns.map((c, i) => {
+          ...metaCampaigns.map((c, i) => {
             const rc = c.resultCount ?? c.leads
             const rl = c.resultLabel || ''
             const cpr = rc > 0 ? c.spend / rc : null
@@ -303,13 +315,14 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
           })
         )
       ),
+      ] : []),
 
-      // Ads Section
-      ...(data.ads && data.ads.length > 0 ? [
+      // ── BLOCO META ADS — anúncios ──
+      ...(hasMeta && metaAds.length > 0 ? [
         React.createElement(
           View,
           { style: styles.section, break: true },
-          React.createElement(Text, { style: styles.sectionTitle }, `ANÚNCIOS NO PERÍODO (${data.ads.length})`),
+          React.createElement(Text, { style: styles.sectionTitle }, `ANÚNCIOS NO PERÍODO (${metaAds.length})`),
           React.createElement(
             View,
             { style: { flexDirection: 'row', padding: '4 8', backgroundColor: '#f1f5f9', marginBottom: 2 } },
@@ -321,7 +334,7 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
             React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'VALOR'),
             React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'ALCANCE')
           ),
-          ...data.ads.map((ad, i) => {
+          ...metaAds.map((ad, i) => {
             const rc = ad.resultCount ?? (ad.leads > 0 ? ad.leads : ad.conversions)
             const rl = ad.resultLabel || ''
             const cpr = rc > 0 ? ad.spend / rc : null
@@ -363,6 +376,69 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
             )
           })
         )
+      ] : []),
+
+      // ── BLOCO GOOGLE ADS — só aparece se o cliente tem Google com dados no período ──
+      ...(hasGoogle ? [
+        React.createElement(
+          View,
+          { style: styles.section, break: hasMeta },
+          React.createElement(Text, { style: { ...styles.sectionTitle, borderLeftColor: '#ea4335' } }, 'GOOGLE ADS — RESUMO'),
+          cardsRow([
+            { label: 'Investimento', value: formatCurrency(google?.spend || 0) },
+            { label: 'Conversões', value: formatNumber(google?.conversions || 0) },
+            { label: 'Custo por Conversão', value: (google?.costPerConv || 0) > 0 ? formatCurrency(google?.costPerConv || 0) : 'N/A' },
+          ]),
+          cardsRow([
+            { label: 'Cliques', value: formatNumber(google?.clicks || 0) },
+            { label: 'CPC Médio', value: formatCurrency(google?.avgCpc || 0) },
+            { label: 'CTR Médio', value: formatPercent(google?.avgCtr || 0) },
+          ])
+        ),
+        React.createElement(
+          View,
+          { style: styles.section },
+          React.createElement(Text, { style: { ...styles.sectionTitle, borderLeftColor: '#ea4335' } }, 'CAMPANHAS — GOOGLE'),
+          React.createElement(
+            View,
+            { style: styles.table },
+            React.createElement(
+              View,
+              { style: { flexDirection: 'row', padding: '4 8', backgroundColor: '#f1f5f9', marginBottom: 2 } },
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 3 } }, 'CAMPANHA'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1.3 } }, 'OBJETIVO'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1.1, textAlign: 'right' } }, 'INVESTIMENTO'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.8, textAlign: 'right' } }, 'CLIQUES'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.9, textAlign: 'right' } }, 'CPC'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'CONVERSÕES'),
+              React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1.1, textAlign: 'right' } }, 'CUSTO/CONV.')
+            ),
+            ...googleCampaigns.map((c, i) => {
+              const cpc = c.clicks > 0 ? c.spend / c.clicks : null
+              const costConv = c.conversions > 0 ? c.spend / c.conversions : null
+              const channel = c.objective ? (GOOGLE_CHANNEL_LABEL[c.objective] || c.objective) : '—'
+              return React.createElement(
+                View,
+                {
+                  key: i,
+                  wrap: false,
+                  style: {
+                    flexDirection: 'row', alignItems: 'center',
+                    padding: '5 8', borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+                    ...(i % 2 === 1 ? { backgroundColor: '#f8fafc' } : {}),
+                  },
+                },
+                React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 3, paddingRight: 6 } }, c.name),
+                React.createElement(Text, { style: { fontSize: 7, color: '#64748b', flex: 1.3 } }, channel),
+                React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 1.1, textAlign: 'right' } }, formatCurrency(c.spend)),
+                React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 0.8, textAlign: 'right' } }, formatNumber(c.clicks)),
+                React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 0.9, textAlign: 'right' } }, cpc != null ? formatCurrency(cpc) : '—'),
+                React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1, textAlign: 'right' } }, formatNumber(c.conversions)),
+                React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1.1, textAlign: 'right' } }, costConv != null ? formatCurrency(costConv) : '—')
+              )
+            })
+          )
+        ),
       ] : []),
 
       // Observations

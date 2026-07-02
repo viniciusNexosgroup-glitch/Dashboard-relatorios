@@ -43,8 +43,14 @@ export async function buildReportData(input: BuildReportInput) {
 
   const campaigns: any[] = []
   const ads: any[] = []
+  // Resumo POR PLATAFORMA — o PDF separa Meta e Google em blocos proprios
+  const byPlatform: Record<string, any> = {}
 
   for (const account of adAccounts) {
+    const bp = (byPlatform[account.platform] ||= {
+      spend: 0, impressions: 0, reach: 0, clicks: 0, leads: 0,
+      msgConversations: 0, conversions: 0, ctrSum: 0, cpcSum: 0, count: 0,
+    })
     for (const campaign of account.campaigns) {
       let cs = 0, ci = 0, cReach = 0, cc = 0, cLinkClicks = 0
       let cl = 0, cMsg = 0, ccv = 0, cProfileVisits = 0, cLandingPageViews = 0
@@ -52,6 +58,9 @@ export async function buildReportData(input: BuildReportInput) {
 
       for (const m of campaign.dailyMetrics) {
         const msg = (m as any).msgConversations || 0
+        bp.spend += m.spend; bp.impressions += m.impressions; bp.reach += m.reach
+        bp.clicks += m.clicks; bp.leads += m.leads; bp.msgConversations += msg
+        bp.conversions += m.conversions; bp.ctrSum += m.ctr; bp.cpcSum += m.cpc; bp.count++
         totalSpend += m.spend; cs += m.spend
         totalImpressions += m.impressions; ci += m.impressions
         totalReach += m.reach; cReach += m.reach
@@ -136,9 +145,20 @@ export async function buildReportData(input: BuildReportInput) {
     return b.spend - a.spend
   })
 
+  // Finaliza médias/derivadas por plataforma
+  for (const p of Object.values(byPlatform)) {
+    p.avgCtr = p.count > 0 ? p.ctrSum / p.count : 0
+    p.avgCpc = p.count > 0 ? p.cpcSum / p.count : 0
+    p.costPerMsg = p.msgConversations > 0 ? p.spend / p.msgConversations : 0
+    p.costPerConv = p.conversions > 0 ? p.spend / p.conversions : 0
+    p.frequency = p.reach > 0 ? p.impressions / p.reach : 0
+    delete p.ctrSum; delete p.cpcSum; delete p.count
+  }
+
   return {
     client: { name: client.name, company: client.company },
     period: { start, end },
+    byPlatform,
     summary: {
       totalSpend,
       totalImpressions,
