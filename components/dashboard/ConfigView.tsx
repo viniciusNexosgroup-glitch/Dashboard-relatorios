@@ -8,9 +8,18 @@ interface Props {
   whatsappStatus: { connected: boolean; state: string }
   googleConnectedEmail?: string | null
   googleConnectedAt?: string | null
+  googleEnv?: { clientId: boolean; clientSecret: boolean; developerToken: boolean }
 }
 
-export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null }: Props) {
+export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null, googleEnv }: Props) {
+  const googleEnvOk = !!(googleEnv?.clientId && googleEnv?.clientSecret && googleEnv?.developerToken)
+  const googleMissing = googleEnv
+    ? [
+        !googleEnv.clientId && 'GOOGLE_CLIENT_ID',
+        !googleEnv.clientSecret && 'GOOGLE_CLIENT_SECRET',
+        !googleEnv.developerToken && 'GOOGLE_DEVELOPER_TOKEN',
+      ].filter(Boolean)
+    : []
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -65,10 +74,23 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
             <p className="font-semibold text-blue-800 mb-1">Meta Ads</p>
             <p className="text-blue-700 text-xs">Configure via <strong>Configurações → Clientes → Vincular conta</strong>. O token é armazenado por conta de anúncio.</p>
           </div>
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="font-semibold text-red-800 mb-1">Google Ads</p>
-            <p className="text-red-700 text-xs">Configure <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong> e um <strong>GOOGLE_DEVELOPER_TOKEN</strong> aprovado no .env. Tokens pendentes/rejeitados acessam apenas contas de teste.</p>
-          </div>
+          {googleEnvOk ? (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="font-semibold text-green-800 mb-1">Google Ads</p>
+              <p className="text-green-700 text-xs">
+                Credenciais configuradas no ambiente (CLIENT_ID, CLIENT_SECRET e DEVELOPER_TOKEN).
+                Gerencie a conexão no card <strong>Google Ads</strong> acima.
+              </p>
+            </div>
+          ) : (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="font-semibold text-red-800 mb-1">Google Ads</p>
+              <p className="text-red-700 text-xs">
+                Faltando no ambiente: <strong>{googleMissing.join(', ') || 'verificação indisponível'}</strong>.
+                Configure no EasyPanel (Ambiente) e faça redeploy. Tokens pendentes/rejeitados acessam apenas contas de teste.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -82,11 +104,12 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
         </div>
         <div className="space-y-2 text-sm">
           {[
-            { time: '08:00', desc: 'Sincronização de métricas + check de saldo baixo' },
-            { time: '14:00', desc: 'Sincronização de métricas + check de saldo baixo' },
-            { time: '20:00', desc: 'Sincronização de métricas + check de saldo baixo' },
+            { time: '08:00', desc: 'Sync completo (últimos 7 dias) + check de saldo baixo' },
+            { time: '14:00 e 20:00', desc: 'Sync leve (dia atual) + check de saldo baixo' },
+            { time: 'Sábado 01:00', desc: 'Sync profundo (60 dias) — pega atribuições retroativas do Meta' },
+            { time: 'Domingo 02:00', desc: 'Limpeza: métricas > 90 dias e logs de sync > 30 dias' },
             { time: 'Segunda 03:00', desc: 'Renovação automática do token Meta (válido por 60 dias)' },
-            { time: 'Dia 1 às 09:30', desc: 'Envio automático de relatório mensal para todos os clientes (sincroniza antes)' },
+            { time: 'Dia 1 às 09:30', desc: 'Envio automático do relatório mensal para todos os clientes' },
             { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando saldo da conta pré-paga ficar < R$ 100 (cooldown 24h)' },
           ].map((item) => (
             <div key={item.time} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">

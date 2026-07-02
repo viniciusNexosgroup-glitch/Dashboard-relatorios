@@ -13,11 +13,19 @@ export default async function ConfiguracoesPage() {
     getGoogleConnectedAt().catch(() => null),
   ])
 
+  // Presença (não os valores) das credenciais Google no ambiente — pro status na tela
+  const googleEnv = {
+    clientId: !!process.env.GOOGLE_CLIENT_ID,
+    clientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    developerToken: !!process.env.GOOGLE_DEVELOPER_TOKEN,
+  }
+
   return (
     <ConfigView
       whatsappStatus={whatsappStatus}
       googleConnectedEmail={googleEmail}
       googleConnectedAt={googleAt?.toISOString() ?? null}
+      googleEnv={googleEnv}
     />
   )
 }
