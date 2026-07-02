@@ -2,7 +2,10 @@ import axios from 'axios'
 import { prisma } from './prisma'
 import { getGoogleRefreshToken } from './google-oauth'
 
-const GOOGLE_API_BASE = 'https://googleads.googleapis.com/v20'
+// Versão configurável via env — Google bloqueia versões antigas (~1 ano após release).
+// Em 2026-07 a mais recente é v24; v20 foi bloqueada (UNSUPPORTED_VERSION).
+const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v24'
+const GOOGLE_API_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`
 
 // Cliente axios com timeout de 60s — evita sync travado se a API do Google lentificar
 const googleApi = axios.create({ timeout: 60_000 })

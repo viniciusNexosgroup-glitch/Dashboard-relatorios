@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import axios from 'axios'
 import { getGoogleRefreshToken } from '@/lib/google-oauth'
 
-const GOOGLE_ADS_API = 'https://googleads.googleapis.com/v20'
+const GOOGLE_ADS_API = `https://googleads.googleapis.com/${process.env.GOOGLE_ADS_API_VERSION || 'v24'}`
 
 async function getAccessToken(refreshToken: string): Promise<string> {
   const res = await axios.post(
