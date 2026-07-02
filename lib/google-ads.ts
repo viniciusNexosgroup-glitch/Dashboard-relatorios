@@ -197,6 +197,18 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
   }
 }
 
+// Mapeia o customer.status do Google (string) pros códigos numéricos da UI de Saldos
+// (semântica Meta: 1=Ativa, 2=Desativada, 7=Bloqueada). null = Desconhecida.
+function mapGoogleStatus(status: string | undefined): number | null {
+  switch (status) {
+    case 'ENABLED': return 1
+    case 'CANCELED': return 2
+    case 'CLOSED': return 2
+    case 'SUSPENDED': return 7
+    default: return null
+  }
+}
+
 export async function refreshGoogleAccountFinancials(adAccountId: string): Promise<void> {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
   if (!account) throw new Error('Conta Google Ads nao encontrada')
@@ -268,7 +280,7 @@ export async function refreshGoogleAccountFinancials(adAccountId: string): Promi
         amountSpent: amountServed,
         spendCap,
         currency: customer?.currencyCode || null,
-        accountStatus: null,
+        accountStatus: mapGoogleStatus(customer?.status),
         fundingType: budget ? 'monthly_invoicing' : null,
         fundingDisplay: budget
           ? `${budget.name || 'Orcamento da conta'} (${limitType || 'limite finito'})`
@@ -286,7 +298,7 @@ export async function refreshGoogleAccountFinancials(adAccountId: string): Promi
         amountSpent: null,
         spendCap: null,
         currency: customer?.currencyCode || null,
-        accountStatus: null,
+        accountStatus: mapGoogleStatus(customer?.status),
         fundingType: 'google_limited',
         fundingDisplay: `Billing Google indisponivel via API: ${msg}`,
         balanceLastSync: new Date(),
