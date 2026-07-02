@@ -95,6 +95,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
         campaign.id,
         campaign.name,
         campaign.status,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -128,14 +129,18 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
       const metrics = row.metrics
       const date = new Date(row.segments.date)
 
+      // advertising_channel_type (SEARCH/PERFORMANCE_MAX/SMART...) vai no campo objective —
+      // o dashboard compartilhado usa pra mostrar o tipo da campanha, igual ao Ads Manager
+      const channelType = campaign.advertisingChannelType || null
       const dbCampaign = await prisma.campaign.upsert({
         where: { adAccountId_externalId: { adAccountId, externalId: String(campaign.id) } },
-        update: { name: campaign.name, status: campaign.status },
+        update: { name: campaign.name, status: campaign.status, objective: channelType },
         create: {
           adAccountId,
           externalId: String(campaign.id),
           name: campaign.name,
           status: campaign.status,
+          objective: channelType,
         },
       })
 

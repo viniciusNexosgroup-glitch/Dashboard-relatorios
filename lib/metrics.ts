@@ -66,7 +66,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   for (const account of adAccounts) {
     const platform = account.platform
     if (!byPlatform[platform]) {
-      byPlatform[platform] = { spend: 0, impressions: 0, clicks: 0, ctr: 0, leads: 0, msgConversations: 0, conversions: 0, ctrCount: 0 }
+      byPlatform[platform] = { spend: 0, impressions: 0, reach: 0, clicks: 0, ctr: 0, cpcSum: 0, leads: 0, msgConversations: 0, conversions: 0, ctrCount: 0 }
     }
 
     for (const campaign of account.campaigns) {
@@ -83,6 +83,8 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
 
         byPlatform[platform].spend += m.spend
         byPlatform[platform].impressions += m.impressions
+        byPlatform[platform].reach += m.reach
+        byPlatform[platform].cpcSum += m.cpc
         byPlatform[platform].clicks += m.clicks
         byPlatform[platform].leads += m.leads
         byPlatform[platform].msgConversations += msgConv
@@ -137,9 +139,15 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
     }
   }
 
+  // Finaliza médias/derivadas por plataforma (usadas nas "Visão Geral" separadas do dashboard compartilhado)
   for (const p of Object.values(byPlatform)) {
     p.ctr = p.ctrCount > 0 ? p.ctr / p.ctrCount : 0
+    p.avgCpc = p.ctrCount > 0 ? p.cpcSum / p.ctrCount : 0
+    p.costPerMsg = p.msgConversations > 0 ? p.spend / p.msgConversations : 0
+    p.costPerConv = p.conversions > 0 ? p.spend / p.conversions : 0
+    p.frequency = p.reach > 0 ? p.impressions / p.reach : 0
     delete p.ctrCount
+    delete p.cpcSum
   }
 
   const avgCtr = metricCount > 0 ? totalCtr / metricCount : 0
