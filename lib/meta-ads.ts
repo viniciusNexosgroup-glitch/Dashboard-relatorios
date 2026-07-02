@@ -135,6 +135,11 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
     const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
     if (!account) throw new Error('Conta Meta não encontrada')
 
+    // Primeira sincronizacao bem-sucedida da conta? Faz backfill de 60 dias pra ja nascer
+    // com historico (senao contas novas ficam so com a janela de 7 dias ate o deep de sabado).
+    const hadSuccess = await prisma.syncLog.findFirst({ where: { adAccountId, status: 'SUCCESS' }, select: { id: true } })
+    const effectiveDays = hadSuccess ? syncDays : 60
+
     const token =
       account.accessToken === '__system__' || !account.accessToken
         ? await getMetaAccessToken()
@@ -168,7 +173,7 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
     for (const r of campaignResults) campaignExternalToDb.set(r.externalId, r.dbId)
 
     // ── 2. Campaign insights — covers last 60 days through today (SP timezone) ──
-    const timeRange = getSyncTimeRange(syncDays)
+    const timeRange = getSyncTimeRange(effectiveDays)
     const campaignInsights = await fetchAllPages(
       `${META_API_BASE}/${accountExternalId}/insights`,
       {

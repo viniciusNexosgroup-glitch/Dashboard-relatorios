@@ -73,13 +73,17 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
   const accessToken = await getGoogleAdsAccessToken(refreshToken)
   const customerId = account.accountId.replace(/-/g, '')
 
+  // Primeira sincronizacao bem-sucedida? Faz backfill de 60 dias pra ja nascer com historico.
+  const hadSuccess = await prisma.syncLog.findFirst({ where: { adAccountId, status: 'SUCCESS' }, select: { id: true } })
+  const effectiveDays = hadSuccess ? syncDays : 60
+
   const syncLog = await prisma.syncLog.create({
     data: { adAccountId, status: 'RUNNING' },
   })
 
   try {
     const until = new Date()
-    const since = new Date(until.getTime() - syncDays * 24 * 60 * 60 * 1000)
+    const since = new Date(until.getTime() - effectiveDays * 24 * 60 * 60 * 1000)
     const sinceStr = since.toISOString().split('T')[0]
     const untilStr = until.toISOString().split('T')[0]
 
