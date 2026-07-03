@@ -19,6 +19,7 @@ import {
   Infinity as InfinityIcon,
   BarChart3,
   Target,
+  Sparkles,
 } from 'lucide-react'
 
 function GoogleIcon({ className = 'w-5 h-5' }: { className?: string }) {
@@ -66,6 +67,10 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Análise inteligente (IA) — só no sistema interno, nunca no dashboard do cliente/PDF
+  const [analysis, setAnalysis] = useState<{ text: string; generatedAt: string } | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+
   function showToast(type: 'success' | 'error', message: string) {
     // Cancela timer anterior pra não limpar o toast novo prematuramente
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -87,6 +92,36 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   useEffect(() => {
     if (selectedClient) fetchMetrics()
   }, [dateFilter])
+
+  // Carrega a última análise cacheada ao trocar cliente/período (sem gerar nova)
+  useEffect(() => {
+    setAnalysis(null)
+    if (!selectedClient) return
+    fetch(`/api/analysis?clientId=${selectedClient}&period=${dateFilter}`)
+      .then((r) => (r.ok ? r.json() : { analysis: null }))
+      .then((d) => setAnalysis(d.analysis || null))
+      .catch(() => {})
+  }, [selectedClient, dateFilter])
+
+  async function handleGenerateAnalysis() {
+    if (!selectedClient || analyzing) return
+    setAnalyzing(true)
+    try {
+      const res = await fetch('/api/analysis', {
+        method: 'POST',
+        body: JSON.stringify({ clientId: selectedClient, period: dateFilter }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Erro ${res.status}`)
+      setAnalysis(data.analysis)
+      showToast('success', 'Análise gerada!')
+    } catch (err: any) {
+      showToast('error', err.message || 'Falha ao gerar análise')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
 
   async function fetchMetrics() {
     if (!selectedClient) return
@@ -335,6 +370,43 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
 
       {selectedClient && !loading && !error && metrics && (
         <>
+          {/* ════════════ ANÁLISE INTELIGENTE (IA) — só interno ════════════ */}
+          <div className="bg-white rounded-xl border border-violet-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-violet-50 border-b border-violet-100">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-violet-600" />
+                <h3 className="text-sm font-semibold text-violet-900">Análise Inteligente</h3>
+                <span className="text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded">IA</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {analysis && (
+                  <span className="text-xs text-gray-400">
+                    Gerada em {new Date(analysis.generatedAt).toLocaleString('pt-BR')}
+                  </span>
+                )}
+                <button
+                  onClick={handleGenerateAnalysis}
+                  disabled={analyzing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw className={`w-3 h-3 ${analyzing ? 'animate-spin' : ''}`} />
+                  {analyzing ? 'Analisando...' : analysis ? 'Atualizar análise' : 'Gerar análise'}
+                </button>
+              </div>
+            </div>
+            {analysis ? (
+              <div className="px-5 py-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {analysis.text}
+              </div>
+            ) : (
+              <div className="px-5 py-6 text-sm text-gray-400 text-center">
+                {analyzing
+                  ? 'A IA está analisando as campanhas do período — leva alguns segundos...'
+                  : 'Clique em "Gerar análise" para um resumo do desempenho e sugestões de otimização feitas por IA.'}
+              </div>
+            )}
+          </div>
+
           {/* ════════════ BLOCO META ADS ════════════ */}
           {hasMeta && (
             <>
