@@ -96,6 +96,8 @@ export function SaldosView({ accounts }: Props) {
   const lowBalanceAccounts = accounts.filter(
     (a) => isPrepaid(a.fundingType) && !!a.balanceLastSync && (a.balance ?? 0) < LOW_BALANCE_THRESHOLD
   )
+  // Status 3 = UNSETTLED (pagamento recusado, anúncios pausados) | 9 = falha na cobrança (vai pausar)
+  const paymentIssueAccounts = accounts.filter((a) => a.accountStatus === 3 || a.accountStatus === 9)
   const tokenErrorAccounts = accounts.filter((a) => !!a.tokenError)
 
   // Horário do sync mais recente entre todas as contas
@@ -153,6 +155,28 @@ export function SaldosView({ accounts }: Props) {
       )}
 
       {/* Banner de alerta */}
+      {/* Alerta: contas com pagamento pendente/cobrança recusada (cartão) */}
+      {paymentIssueAccounts.length > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-red-600 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-red-800 text-base">
+              {paymentIssueAccounts.length} {paymentIssueAccounts.length === 1 ? 'conta com pagamento pendente' : 'contas com pagamento pendente'}
+            </h3>
+            <p className="text-sm text-red-700 mt-1">
+              O Meta não conseguiu processar a cobrança {paymentIssueAccounts.length === 1 ? 'da conta abaixo' : 'das contas abaixo'} —
+              os anúncios {paymentIssueAccounts.length === 1 ? 'foram pausados (ou serão em breve)' : 'foram pausados (ou serão em breve)'}.
+              Regularize o pagamento no Gerenciador de Anúncios:
+            </p>
+            <p className="text-sm font-semibold text-red-800 mt-1.5">
+              {paymentIssueAccounts.map((a) => a.accountName).join(' · ')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {lowBalanceAccounts.length > 0 ? (
         <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5 flex items-start gap-4">
           <div className="w-10 h-10 rounded-lg bg-red-500 flex items-center justify-center shrink-0">
@@ -168,7 +192,7 @@ export function SaldosView({ accounts }: Props) {
             </p>
           </div>
         </div>
-      ) : (
+      ) : paymentIssueAccounts.length === 0 ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-5 flex items-center gap-4">
           <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-5 h-5 text-white" />
@@ -176,11 +200,11 @@ export function SaldosView({ accounts }: Props) {
           <div>
             <h3 className="font-bold text-green-800 text-base">Tudo certo</h3>
             <p className="text-sm text-green-700 mt-0.5">
-              Nenhuma conta pré-paga com saldo abaixo de {formatCurrency(LOW_BALANCE_THRESHOLD)}.
+              Nenhuma conta pré-paga com saldo baixo e nenhum pagamento pendente.
             </p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Filtro */}
       <div className="flex items-center gap-2">
