@@ -75,6 +75,7 @@ model AdAccount {
   fundingDisplay  String?   // texto bruto do meio de pagamento (ex: "Visa **** 1234", "Boleto", "Saldo")
   balanceLastSync DateTime?
   lastLowBalanceAlert DateTime?  // ultima vez que um alerta de saldo baixo foi enviado pro cliente
+  lastPaymentAlert DateTime?     // ultima vez que um alerta de pagamento pendente/conta pausada foi enviado
   // Token health monitoring (Meta access tokens expiram em 60 dias)
   tokenError      String?    // mensagem do ultimo erro de token (null = OK)
   tokenErrorAt    DateTime?  // quando o erro foi detectado

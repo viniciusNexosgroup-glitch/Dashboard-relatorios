@@ -2,7 +2,7 @@ import cron from 'node-cron'
 import { prisma } from './prisma'
 import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
-import { checkAndAlertLowBalances } from './balance-alerts'
+import { checkAndAlertLowBalances, checkAndAlertPaymentIssues } from './balance-alerts'
 import { refreshMetaTokenIfNearExpiry } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
 
@@ -53,6 +53,12 @@ async function runSyncAllAccounts(triggerLabel: string, syncDays = 7) {
     console.log(`${tag} [3/3] alertas de saldo: ${alertResult.alerted.length} enviados, ${alertResult.skipped.length} pulados (cooldown/sem WhatsApp)`)
     for (const a of alertResult.alerted) {
       console.log(`  → alerta enviado para ${a.clientName} (saldo: R$ ${a.balance.toFixed(2)})`)
+    }
+    // Contas pausadas (ou prestes a pausar) por falha de pagamento no cartão
+    const payResult = await checkAndAlertPaymentIssues()
+    console.log(`${tag} [3/3] alertas de pagamento: ${payResult.alerted.length} enviados, ${payResult.skipped.length} pulados`)
+    for (const a of payResult.alerted) {
+      console.log(`  → alerta de pagamento enviado para ${a.clientName} (status Meta: ${a.status})`)
     }
   } catch (err: any) {
     console.error(`${tag} [3/3] alertas de saldo falharam:`, err.message)

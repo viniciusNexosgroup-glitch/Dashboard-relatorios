@@ -41,10 +41,10 @@ interface Props {
 const LOW_BALANCE_THRESHOLD = 100
 
 const statusLabel = (s: number | null) =>
-  s === 1 ? 'Ativa' : s === 2 ? 'Desativada' : s === 3 ? 'Pendente fechamento' : s === 7 ? 'Bloqueada' : s === 9 ? 'Em revisão' : 'Desconhecida'
+  s === 1 ? 'Ativa' : s === 2 ? 'Desativada' : s === 3 ? 'Pagamento pendente' : s === 7 ? 'Bloqueada' : s === 9 ? 'Falha na cobrança' : 'Desconhecida'
 
 const statusColor = (s: number | null) =>
-  s === 1 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
+  s === 1 ? 'bg-green-100 text-green-700' : s === 3 || s === 9 ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
 
 const fundingLabel: Record<string, string> = {
   prepaid: 'Pré-paga',

@@ -111,6 +111,7 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
             { time: 'Segunda 03:00', desc: 'Renovação automática do token Meta (válido por 60 dias)' },
             { time: 'Dia 1 às 09:30', desc: 'Envio automático do relatório mensal para todos os clientes' },
             { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando saldo da conta pré-paga ficar < R$ 100 (cooldown 24h)' },
+            { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando a conta pausar por falha no pagamento do cartão (cooldown 24h)' },
           ].map((item) => (
             <div key={item.time} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
               <span className="text-xs font-mono bg-gray-200 text-gray-700 px-2 py-0.5 rounded">{item.time}</span>
