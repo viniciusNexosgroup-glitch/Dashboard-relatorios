@@ -5,7 +5,7 @@ import { syncGoogleAccount } from './google-ads'
 import { checkAndAlertLowBalances, checkAndAlertPaymentIssues } from './balance-alerts'
 import { cleanOldData } from './cleanup'
 import { sendMonthlyReports } from './monthly-report'
-import { refreshMetaTokenIfNearExpiry } from './meta-token'
+import { refreshMetaTokenIfNearExpiry, checkMetaTokenExpiryAlert } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
@@ -31,6 +31,8 @@ async function runSyncAllAccounts(triggerLabel: string, syncDays = 7) {
   } catch (err: any) {
     console.error(`${tag} [1/3] check de token falhou:`, err.message)
   }
+  // Alerta o admin no WhatsApp se o token estiver a <= 10 dias de expirar
+  await checkMetaTokenExpiryAlert().catch(() => {})
 
   // ── Etapa 2: Sync de todas as contas (atualiza métricas + saldo no banco) ──
   const accounts = await prisma.adAccount.findMany({ where: { active: true } })

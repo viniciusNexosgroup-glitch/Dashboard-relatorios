@@ -1,5 +1,6 @@
 import { getInstanceStatus } from '@/lib/evolution-api'
 import { getGoogleConnectedEmail, getGoogleConnectedAt } from '@/lib/google-oauth'
+import { getMetaTokenExpiresAt } from '@/lib/meta-token'
 import { ConfigView } from '@/components/dashboard/ConfigView'
 
 export default async function ConfiguracoesPage() {
@@ -8,9 +9,10 @@ export default async function ConfiguracoesPage() {
     whatsappStatus = await getInstanceStatus()
   } catch {}
 
-  const [googleEmail, googleAt] = await Promise.all([
+  const [googleEmail, googleAt, metaTokenExpiresAt] = await Promise.all([
     getGoogleConnectedEmail().catch(() => null),
     getGoogleConnectedAt().catch(() => null),
+    getMetaTokenExpiresAt().catch(() => null),
   ])
 
   // Presença (não os valores) das credenciais Google no ambiente — pro status na tela
@@ -26,6 +28,7 @@ export default async function ConfiguracoesPage() {
       googleConnectedEmail={googleEmail}
       googleConnectedAt={googleAt?.toISOString() ?? null}
       googleEnv={googleEnv}
+      metaTokenExpiresAt={metaTokenExpiresAt?.toISOString() ?? null}
     />
   )
 }

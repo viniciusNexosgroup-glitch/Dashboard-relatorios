@@ -1,6 +1,8 @@
 'use client'
 
-import { CheckCircle, XCircle, MessageSquare, Key, Clock, Info } from 'lucide-react'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle, XCircle, MessageSquare, Key, Clock, Info, KeyRound, Loader2 } from 'lucide-react'
 import { ChangePasswordCard } from './ChangePasswordCard'
 import { GoogleAdsCard } from './GoogleAdsCard'
 
@@ -9,9 +11,40 @@ interface Props {
   googleConnectedEmail?: string | null
   googleConnectedAt?: string | null
   googleEnv?: { clientId: boolean; clientSecret: boolean; developerToken: boolean }
+  metaTokenExpiresAt?: string | null
 }
 
-export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null, googleEnv }: Props) {
+export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null, googleEnv, metaTokenExpiresAt = null }: Props) {
+  const router = useRouter()
+  const [newToken, setNewToken] = useState('')
+  const [savingToken, setSavingToken] = useState(false)
+  const [tokenMsg, setTokenMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const tokenDaysLeft = metaTokenExpiresAt
+    ? Math.floor((new Date(metaTokenExpiresAt).getTime() - Date.now()) / 86_400_000)
+    : null
+
+  async function handleSaveToken() {
+    if (!newToken.trim() || savingToken) return
+    setSavingToken(true)
+    setTokenMsg(null)
+    try {
+      const res = await fetch('/api/meta-token', {
+        method: 'POST',
+        body: JSON.stringify({ token: newToken.trim() }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Erro ${res.status}`)
+      setTokenMsg({ ok: true, text: `Token renovado! Válido por ${data.daysLeft} dias (até ${new Date(data.expiresAt).toLocaleDateString('pt-BR')}).` })
+      setNewToken('')
+      router.refresh()
+    } catch (err: any) {
+      setTokenMsg({ ok: false, text: err.message || 'Falha ao renovar token' })
+    } finally {
+      setSavingToken(false)
+    }
+  }
   const googleEnvOk = !!(googleEnv?.clientId && googleEnv?.clientSecret && googleEnv?.developerToken)
   const googleMissing = googleEnv
     ? [
@@ -60,6 +93,61 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
 
       {/* Google Ads OAuth */}
       <GoogleAdsCard connectedEmail={googleConnectedEmail} connectedAt={googleConnectedAt} />
+
+      {/* Token Meta — renovação manual (tokens de usuário duram no máx. 60 dias) */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+              <KeyRound className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-800">Token Meta</h2>
+              <p className="text-xs text-gray-500">Acesso às contas de anúncio (Facebook/Instagram)</p>
+            </div>
+          </div>
+          {tokenDaysLeft != null && (
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+              tokenDaysLeft <= 10 ? 'bg-red-100 text-red-700' : tokenDaysLeft <= 20 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+            }`}>
+              {tokenDaysLeft <= 0 ? 'EXPIRADO' : `expira em ${tokenDaysLeft}d (${new Date(metaTokenExpiresAt!).toLocaleDateString('pt-BR')})`}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+          Tokens de usuário do Meta duram no máximo <strong>60 dias</strong> e não renovam sozinhos.
+          Gere um novo no{' '}
+          <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+            Graph API Explorer
+          </a>{' '}
+          (selecione o app, gere o token de usuário com as permissões de anúncios) e cole abaixo —
+          o sistema troca por um token de 60 dias automaticamente. Você recebe um aviso no WhatsApp quando faltarem 10 dias.
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={newToken}
+            onChange={(e) => setNewToken(e.target.value)}
+            placeholder="Cole o token novo aqui (EAAX...)"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            onClick={handleSaveToken}
+            disabled={!newToken.trim() || savingToken}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {savingToken && <Loader2 className="w-4 h-4 animate-spin" />}
+            {savingToken ? 'Renovando...' : 'Salvar e renovar'}
+          </button>
+        </div>
+        {tokenMsg && (
+          <p className={`text-xs mt-2 font-medium ${tokenMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
+            {tokenMsg.ok ? '✓ ' : '✗ '}{tokenMsg.text}
+          </p>
+        )}
+      </div>
 
       {/* API Keys Guide */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
