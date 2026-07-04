@@ -110,23 +110,37 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
   const hasGoogle = googleCampaigns.length > 0 || (google?.spend || 0) > 0 || googleAccounts.length > 0
 
   const metaKpis = meta ? [
-    { label: 'Investimento', value: formatCurrency(meta.spend), icon: DollarSign },
-    { label: 'Conversas', value: formatNumber(meta.msgConversations || 0), icon: MessageSquare },
-    { label: 'Custo por Conversa', value: (meta.costPerMsg || 0) > 0 ? formatCurrency(meta.costPerMsg) : 'N/A', icon: MessageSquare },
-    { label: 'Impressões', value: formatNumber(meta.impressions), icon: Eye },
-    { label: 'Alcance', value: formatNumber(meta.reach || 0), icon: Eye },
-    { label: 'Cliques', value: formatNumber(meta.clicks), icon: Users },
-    { label: 'Frequência', value: (meta.frequency || 0).toFixed(2), icon: BarChart3 },
-    { label: 'CTR Médio', value: formatPercent(meta.ctr || 0), icon: MousePointerClick },
+    { label: 'Investimento', value: formatCurrency(meta.spend), icon: DollarSign,
+      info: 'Total investido em anúncios no Meta (Facebook/Instagram) no período selecionado.' },
+    { label: 'Conversas', value: formatNumber(meta.msgConversations || 0), icon: MessageSquare,
+      info: 'Conversas iniciadas no WhatsApp ou Direct por pessoas que clicaram nos anúncios.' },
+    { label: 'Custo por Conversa', value: (meta.costPerMsg || 0) > 0 ? formatCurrency(meta.costPerMsg) : 'N/A', icon: MessageSquare,
+      info: 'Investimento dividido pelo número de conversas — quanto custou, em média, cada pessoa que chamou.' },
+    { label: 'Impressões', value: formatNumber(meta.impressions), icon: Eye,
+      info: 'Quantas vezes os anúncios foram exibidos. A mesma pessoa pode ver mais de uma vez.' },
+    { label: 'Alcance', value: formatNumber(meta.reach || 0), icon: Eye,
+      info: 'Número de pessoas únicas que viram os anúncios no período.' },
+    { label: 'Cliques', value: formatNumber(meta.clicks), icon: Users,
+      info: 'Total de cliques nos anúncios (inclui cliques no link, no perfil, em curtir etc.).' },
+    { label: 'Frequência', value: (meta.frequency || 0).toFixed(2), icon: BarChart3,
+      info: 'Média de vezes que cada pessoa viu os anúncios (impressões ÷ alcance). Muito alta pode indicar anúncio saturado.' },
+    { label: 'CTR Médio', value: formatPercent(meta.ctr || 0), icon: MousePointerClick,
+      info: 'Taxa de cliques: % das exibições que viraram clique. Quanto maior, mais o anúncio chama atenção.' },
   ] : []
 
   const googleKpis = google ? [
-    { label: 'Investimento', value: formatCurrency(google.spend), icon: DollarSign },
-    { label: 'Conversões', value: formatNumber(google.conversions || 0), icon: Target },
-    { label: 'Custo por Conversão', value: (google.costPerConv || 0) > 0 ? formatCurrency(google.costPerConv) : 'N/A', icon: ShoppingCart },
-    { label: 'Cliques', value: formatNumber(google.clicks), icon: MousePointerClick },
-    { label: 'CPC Médio', value: formatCurrency(google.avgCpc || 0), icon: DollarSign },
-    { label: 'CTR Médio', value: formatPercent(google.ctr || 0), icon: BarChart3 },
+    { label: 'Investimento', value: formatCurrency(google.spend), icon: DollarSign,
+      info: 'Total investido em anúncios no Google Ads no período selecionado.' },
+    { label: 'Conversões', value: formatNumber(google.conversions || 0), icon: Target,
+      info: 'Ações valiosas registradas pelo Google (ex: conversa no WhatsApp, ligação, formulário), conforme configurado na conta.' },
+    { label: 'Custo por Conversão', value: (google.costPerConv || 0) > 0 ? formatCurrency(google.costPerConv) : 'N/A', icon: ShoppingCart,
+      info: 'Investimento dividido pelo número de conversões — quanto custou, em média, cada resultado.' },
+    { label: 'Cliques', value: formatNumber(google.clicks), icon: MousePointerClick,
+      info: 'Total de cliques nos anúncios do Google (Pesquisa, Display, YouTube etc.).' },
+    { label: 'CPC Médio', value: formatCurrency(google.avgCpc || 0), icon: DollarSign,
+      info: 'Custo médio por clique: investimento dividido pelos cliques.' },
+    { label: 'CTR Médio', value: formatPercent(google.ctr || 0), icon: BarChart3,
+      info: 'Taxa de cliques: % das exibições que viraram clique. No Google Search, CTRs são normalmente maiores que em redes sociais.' },
   ] : []
 
   // Totais Meta (arvore)
@@ -165,14 +179,30 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
     </div>
   )
 
-  const KpiGrid = ({ items }: { items: { label: string; value: string; icon: any }[] }) => (
+  // Tooltip explicando a métrica: aparece no HOVER (desktop) ou ao CLICAR/tocar no
+  // ícone (mobile, via focus) — e some ao clicar fora (blur). Sem estado JS.
+  const KpiGrid = ({ items }: { items: { label: string; value: string; icon: any; info?: string }[] }) => (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {items.map((k) => (
         <div key={k.label} className="bg-[#111f38] border border-slate-700/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-slate-400 font-medium">{k.label}</p>
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <k.icon className="w-4 h-4 text-blue-400" />
+            <div className="relative group">
+              <button
+                type="button"
+                aria-label={`O que é ${k.label}?`}
+                className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center cursor-help focus:outline-none focus:ring-1 focus:ring-blue-500/60"
+              >
+                <k.icon className="w-4 h-4 text-blue-400" />
+              </button>
+              {k.info && (
+                <div className="pointer-events-none absolute right-0 top-full mt-2 w-64 z-30 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150">
+                  <div className="bg-[#1b2c4a] border border-slate-600 rounded-lg p-3 shadow-xl">
+                    <p className="text-[11px] font-semibold text-white mb-1">{k.label}</p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">{k.info}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <p className="text-2xl font-bold text-white">{k.value}</p>
