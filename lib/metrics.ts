@@ -34,17 +34,30 @@ export interface ComputeMetricsInput {
 }
 
 export async function computeClientMetrics({ clientId, start, end }: ComputeMetricsInput) {
+  // select explícito: evita puxar accessToken/refreshToken e colunas não usadas
+  // em TODA requisição de dashboard (menos egress do banco, menos memória)
+  const metricSelect = {
+    date: true, spend: true, impressions: true, reach: true, clicks: true,
+    linkClicks: true, ctr: true, cpc: true, leads: true, msgConversations: true,
+    conversions: true, profileVisits: true, landingPageViews: true, roas: true, frequency: true,
+  } as const
+
   const adAccounts = await prisma.adAccount.findMany({
     where: { clientId },
-    include: {
+    select: {
+      platform: true, accountName: true, accountId: true, active: true,
+      fundingType: true, balance: true,
       campaigns: {
-        include: {
-          dailyMetrics: { where: { date: { gte: start, lte: end } } },
+        select: {
+          id: true, name: true, status: true, objective: true,
+          dailyMetrics: { where: { date: { gte: start, lte: end } }, select: metricSelect },
           adSets: {
-            include: {
+            select: {
+              id: true, name: true, status: true,
               ads: {
-                include: {
-                  dailyMetrics: { where: { date: { gte: start, lte: end } } },
+                select: {
+                  id: true, name: true, status: true, thumbnailUrl: true,
+                  dailyMetrics: { where: { date: { gte: start, lte: end } }, select: metricSelect },
                 },
               },
             },
@@ -151,6 +164,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   // Finaliza médias/derivadas por plataforma (usadas nas "Visão Geral" separadas do dashboard compartilhado)
   for (const p of Object.values(byPlatform)) {
     p.ctr = p.ctrCount > 0 ? p.ctr / p.ctrCount : 0
+    p.avgCtr = p.ctr // alias — o PDF (pdf-generator) lê avgCtr; dashboards leem ctr
     p.avgCpc = p.ctrCount > 0 ? p.cpcSum / p.ctrCount : 0
     p.costPerMsg = p.msgConversations > 0 ? p.spend / p.msgConversations : 0
     p.costPerConv = p.conversions > 0 ? p.spend / p.conversions : 0

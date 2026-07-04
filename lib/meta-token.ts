@@ -15,6 +15,37 @@ export async function getMetaTokenExpiresAt(): Promise<Date | null> {
   return isNaN(d.getTime()) ? null : d
 }
 
+// Troca o token atual por um novo long-lived (60 dias) e persiste no banco.
+// Única implementação da troca — usada pela renovação preventiva e pelo cron semanal.
+export async function exchangeAndStoreMetaToken(currentToken: string): Promise<{ token: string; expiresAt: Date }> {
+  const res = await axios.get('https://graph.facebook.com/oauth/access_token', {
+    params: {
+      grant_type: 'fb_exchange_token',
+      client_id: process.env.META_APP_ID,
+      client_secret: process.env.META_APP_SECRET,
+      fb_exchange_token: currentToken,
+    },
+    timeout: 30_000,
+  })
+  const newToken = res.data.access_token
+  const expiresAt = new Date(Date.now() + res.data.expires_in * 1000)
+
+  await prisma.$transaction([
+    prisma.appSettings.upsert({
+      where: { key: 'meta_access_token' },
+      update: { value: newToken },
+      create: { key: 'meta_access_token', value: newToken },
+    }),
+    prisma.appSettings.upsert({
+      where: { key: 'meta_token_expires_at' },
+      update: { value: expiresAt.toISOString() },
+      create: { key: 'meta_token_expires_at', value: expiresAt.toISOString() },
+    }),
+  ])
+
+  return { token: newToken, expiresAt }
+}
+
 // Renova o token automaticamente se estiver perto de expirar (< 14 dias).
 // Idempotente — se já está fresco, não faz nada. Chamado antes dos syncs.
 export async function refreshMetaTokenIfNearExpiry(): Promise<{ refreshed: boolean; expiresAt: Date | null }> {
@@ -29,32 +60,7 @@ export async function refreshMetaTokenIfNearExpiry(): Promise<{ refreshed: boole
   if (!currentToken) return { refreshed: false, expiresAt }
 
   try {
-    const res = await axios.get('https://graph.facebook.com/oauth/access_token', {
-      params: {
-        grant_type: 'fb_exchange_token',
-        client_id: process.env.META_APP_ID,
-        client_secret: process.env.META_APP_SECRET,
-        fb_exchange_token: currentToken,
-      },
-      timeout: 30_000,
-    })
-    const newToken = res.data.access_token
-    const expiresIn = res.data.expires_in
-    const newExpiresAt = new Date(Date.now() + expiresIn * 1000)
-
-    await prisma.$transaction([
-      prisma.appSettings.upsert({
-        where: { key: 'meta_access_token' },
-        update: { value: newToken },
-        create: { key: 'meta_access_token', value: newToken },
-      }),
-      prisma.appSettings.upsert({
-        where: { key: 'meta_token_expires_at' },
-        update: { value: newExpiresAt.toISOString() },
-        create: { key: 'meta_token_expires_at', value: newExpiresAt.toISOString() },
-      }),
-    ])
-
+    const { expiresAt: newExpiresAt } = await exchangeAndStoreMetaToken(currentToken)
     console.log(`[meta-token] renovado preventivamente — novo valido até ${newExpiresAt.toISOString()}`)
     return { refreshed: true, expiresAt: newExpiresAt }
   } catch (err: any) {

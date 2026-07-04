@@ -3,22 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import axios from 'axios'
 import { getGoogleRefreshToken } from '@/lib/google-oauth'
+import { getGoogleAdsAccessToken } from '@/lib/google-ads'
 
 const GOOGLE_ADS_API = `https://googleads.googleapis.com/${process.env.GOOGLE_ADS_API_VERSION || 'v24'}`
-
-async function getAccessToken(refreshToken: string): Promise<string> {
-  const res = await axios.post(
-    'https://oauth2.googleapis.com/token',
-    new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID || '',
-      client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30_000 }
-  )
-  return res.data.access_token
-}
 
 type Account = {
   id: string
@@ -84,7 +71,7 @@ export async function GET() {
   }
 
   try {
-    const accessToken = await getAccessToken(refreshToken)
+    const accessToken = await getGoogleAdsAccessToken(refreshToken)
     const baseHeaders: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       'developer-token': developerToken,

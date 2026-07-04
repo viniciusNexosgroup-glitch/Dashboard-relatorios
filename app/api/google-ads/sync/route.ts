@@ -19,18 +19,29 @@ export async function POST(req: NextRequest) {
       platform: 'GOOGLE',
       active: true,
     },
+    select: { id: true },
   })
 
-  const results = []
-  for (const account of accounts) {
-    try {
-      const result = await syncGoogleAccount(account.id)
-      results.push({ accountId: account.id, ...result })
-    } catch (err: any) {
-      results.push({ accountId: account.id, success: false, error: err.message })
+  const syncAll = async () => {
+    const results = []
+    for (const account of accounts) {
+      try {
+        const result = await syncGoogleAccount(account.id)
+        results.push({ accountId: account.id, ...result })
+      } catch (err: any) {
+        results.push({ accountId: account.id, success: false, error: err.message })
+      }
     }
+    return results
   }
 
+  // Sem clientId = "Sincronizar Todos" — roda em background (ver rota do Meta)
+  if (!clientId) {
+    void syncAll().then((r) => console.log(`[sync-all GOOGLE] concluído: ${r.length} contas`))
+    return NextResponse.json({ started: accounts.length, background: true })
+  }
+
+  const results = await syncAll()
   const failed = results.filter((r) => !r.success)
   return NextResponse.json(
     {

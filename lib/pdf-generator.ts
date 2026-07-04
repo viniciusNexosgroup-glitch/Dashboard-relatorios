@@ -10,6 +10,7 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer'
 import { formatCurrency, formatNumber, formatPercent, formatDate } from './utils'
+import { GOOGLE_CHANNEL_LABEL } from './google-channel'
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontFamily: 'Helvetica', backgroundColor: '#ffffff' },
@@ -157,11 +158,6 @@ function generateObservations(data: ReportData): string[] {
     obs.push(`${summary.totalLeads} leads gerados no período com investimento de ${formatCurrency(summary.totalSpend)}.`)
 
   return obs
-}
-
-const GOOGLE_CHANNEL_LABEL: Record<string, string> = {
-  SEARCH: 'Pesquisa', PERFORMANCE_MAX: 'Performance Max', DISPLAY: 'Display',
-  SHOPPING: 'Shopping', VIDEO: 'Vídeo', SMART: 'Smart', DEMAND_GEN: 'Demand Gen', MULTI_CHANNEL: 'Multicanal',
 }
 
 export async function generateReportPDF(data: ReportData): Promise<Buffer> {

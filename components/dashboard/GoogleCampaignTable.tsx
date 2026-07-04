@@ -1,18 +1,7 @@
 'use client'
 
 import { formatCurrency, formatNumber } from '@/lib/utils'
-
-// Tipo de campanha (advertising_channel_type) → badge igual ao Google Ads Manager
-const CHANNEL: Record<string, { label: string; cls: string }> = {
-  SEARCH: { label: 'Pesquisa', cls: 'bg-blue-100 text-blue-700' },
-  PERFORMANCE_MAX: { label: 'Performance Max', cls: 'bg-orange-100 text-orange-700' },
-  DISPLAY: { label: 'Display', cls: 'bg-purple-100 text-purple-700' },
-  SHOPPING: { label: 'Shopping', cls: 'bg-cyan-100 text-cyan-700' },
-  VIDEO: { label: 'Vídeo', cls: 'bg-red-100 text-red-700' },
-  SMART: { label: 'Smart', cls: 'bg-green-100 text-green-700' },
-  DEMAND_GEN: { label: 'Demand Gen', cls: 'bg-pink-100 text-pink-700' },
-  MULTI_CHANNEL: { label: 'Multicanal', cls: 'bg-gray-100 text-gray-600' },
-}
+import { GOOGLE_CHANNEL_LABEL, GOOGLE_CHANNEL_CLASS_LIGHT } from '@/lib/google-channel'
 
 interface Campaign {
   name: string
@@ -50,7 +39,9 @@ export function GoogleCampaignTable({ campaigns }: { campaigns: Campaign[] }) {
         <tbody>
           {campaigns.map((c, i) => {
             const active = (c.status || '').toUpperCase() === 'ENABLED'
-            const channel = c.objective ? CHANNEL[c.objective] : null
+            const channel = c.objective && GOOGLE_CHANNEL_LABEL[c.objective]
+              ? { label: GOOGLE_CHANNEL_LABEL[c.objective], cls: GOOGLE_CHANNEL_CLASS_LIGHT[c.objective] || 'bg-gray-100 text-gray-600' }
+              : null
             const cpc = (c.clicks || 0) > 0 ? c.spend / c.clicks : null
             const costConv = (c.conversions || 0) > 0 ? c.spend / c.conversions : null
             return (

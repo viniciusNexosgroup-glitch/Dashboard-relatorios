@@ -3,6 +3,8 @@ import { prisma } from './prisma'
 import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
 import { checkAndAlertLowBalances, checkAndAlertPaymentIssues } from './balance-alerts'
+import { cleanOldData } from './cleanup'
+import { sendMonthlyReports } from './monthly-report'
 import { refreshMetaTokenIfNearExpiry } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
 
@@ -70,12 +72,10 @@ async function runSyncAllAccounts(triggerLabel: string, syncDays = 7) {
 async function runMonthlyReport() {
   console.log(`\n[cron monthly-report] starting at ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
   try {
-    // Use the existing endpoint so we don't duplicate the report-generation logic
-    const res = await fetch(`http://localhost:${process.env.PORT || 3000}/api/cron/monthly-report`, {
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
-    })
-    const data = await res.json()
-    console.log('[cron monthly-report] result:', JSON.stringify(data).slice(0, 500))
+    // Chamada DIRETA (sem HTTP) — envio de 40+ clientes com pausas anti-ban leva
+    // ~1h e estourava o requestTimeout de 300s do Node quando ia via fetch local.
+    const result = await sendMonthlyReports()
+    console.log(`[cron monthly-report] ${result.sent} enviados, ${result.skippedAlreadySent} já tinham, ${result.processed} processados`)
   } catch (err: any) {
     console.error('[cron monthly-report] failed:', err.message)
   }
@@ -100,25 +100,13 @@ async function runRefreshMetaToken() {
   }
 }
 
-// Retém 90 dias de métricas (cobre o filtro lastMonth que vai até ~60 dias atrás).
-// Retém 30 dias de sync_logs (histórico operacional suficiente).
-const METRICS_RETENTION_DAYS = 90
-const SYNC_LOG_RETENTION_DAYS = 30
-
-async function cleanOldData() {
+async function runCleanup() {
   const tag = '[cron cleanup]'
-  const now = new Date()
-  const metricsCutoff = new Date(now.getTime() - METRICS_RETENTION_DAYS * 24 * 60 * 60 * 1000)
-  const syncLogCutoff = new Date(now.getTime() - SYNC_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000)
-
-  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${now.toLocaleString('pt-BR', { timeZone: TZ })}`)
+  console.log(`\n${tag} ━━━━━━━━ INICIO ━━━━━━━━ ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
   try {
-    const [metrics, logs] = await Promise.all([
-      prisma.dailyMetric.deleteMany({ where: { date: { lt: metricsCutoff } } }),
-      prisma.syncLog.deleteMany({ where: { startedAt: { lt: syncLogCutoff } } }),
-    ])
-    console.log(`${tag} daily_metrics removidos: ${metrics.count} (data < ${metricsCutoff.toLocaleDateString('pt-BR')})`)
-    console.log(`${tag} sync_logs removidos: ${logs.count} (> ${SYNC_LOG_RETENTION_DAYS} dias)`)
+    const r = await cleanOldData()
+    console.log(`${tag} daily_metrics removidos: ${r.metricsDeleted} (data < ${r.metricsCutoff.toLocaleDateString('pt-BR')})`)
+    console.log(`${tag} sync_logs removidos: ${r.syncLogsDeleted}`)
   } catch (err: any) {
     console.error(`${tag} falhou:`, err.message)
   }
@@ -138,8 +126,10 @@ export function startCronJobs() {
   cron.schedule('0 14 * * *', () => runSyncAllAccounts('14:00-leve', 1), { timezone: TZ })
   cron.schedule('0 20 * * *', () => runSyncAllAccounts('20:00-leve', 1), { timezone: TZ })
 
-  // Monthly report — day 1 at 09:30 (sync das 08:00 ja deve ter terminado mesmo com muitos clientes)
-  cron.schedule('30 9 1 * *', () => runMonthlyReport(), { timezone: TZ })
+  // Monthly report — dias 1 a 3 às 09:30. O envio é IDEMPOTENTE (pula quem já
+  // recebeu), então os dias 2-3 funcionam como catch-up: se o servidor estava
+  // fora do ar no dia 1 (ou o envio falhou no meio), completa nos dias seguintes.
+  cron.schedule('30 9 1-3 * *', () => runMonthlyReport(), { timezone: TZ })
 
   // Refresh do token Meta — toda segunda às 03:00 SP. Tokens duram 60 dias,
   // então renovar semanalmente garante sempre >53 dias de validade restantes.
@@ -164,7 +154,7 @@ export function startCronJobs() {
   cron.schedule('0 1 * * 6', () => runSyncAllAccounts('deep-60d', 60), { timezone: TZ })
 
   // Cleanup semanal — domingo às 02:00 SP (mantém 90 dias de métricas, 30 dias de sync_logs)
-  cron.schedule('0 2 * * 0', () => cleanOldData(), { timezone: TZ })
+  cron.schedule('0 2 * * 0', () => runCleanup(), { timezone: TZ })
 
   console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
 }

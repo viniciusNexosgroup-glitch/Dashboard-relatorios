@@ -85,12 +85,6 @@ async function fetchAllPages(url: string, params: any): Promise<any[]> {
   return results
 }
 
-async function batchUpsert(ops: any[]) {
-  for (let i = 0; i < ops.length; i += 100) {
-    await prisma.$transaction(ops.slice(i, i + 100))
-  }
-}
-
 // Process an array in parallel chunks to avoid overwhelming the DB connection pool
 async function parallelMap<T, R>(items: T[], chunkSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = []
@@ -100,25 +94,6 @@ async function parallelMap<T, R>(items: T[], chunkSize: number, fn: (item: T) =>
     results.push(...r)
   }
   return results
-}
-
-async function upsertAdRecord(
-  ad: any,
-  campaignDbId: string,
-  adExternalToDbId: Map<string, string>
-) {
-  const dbAdSet = await prisma.adSet.upsert({
-    where: { campaignId_externalId: { campaignId: campaignDbId, externalId: ad.adset_id } },
-    update: {},
-    create: { campaignId: campaignDbId, externalId: ad.adset_id, name: ad.adset_id, status: 'UNKNOWN' },
-  })
-  const thumbnailUrl = ad.creative?.thumbnail_url || ad.creative?.image_url || null
-  const dbAd = await prisma.ad.upsert({
-    where: { adSetId_externalId: { adSetId: dbAdSet.id, externalId: ad.id } },
-    update: { name: ad.name, status: ad.status, thumbnailUrl },
-    create: { adSetId: dbAdSet.id, externalId: ad.id, name: ad.name, status: ad.status, thumbnailUrl },
-  })
-  adExternalToDbId.set(ad.id, dbAd.id)
 }
 
 export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
@@ -511,16 +486,4 @@ export async function refreshAccountFinancials(adAccountId: string): Promise<voi
       balanceLastSync: new Date(),
     },
   })
-}
-
-export async function getMetaLongLivedToken(shortToken: string): Promise<string> {
-  const res = await metaApi.get(`${META_API_BASE}/oauth/access_token`, {
-    params: {
-      grant_type: 'fb_exchange_token',
-      client_id: process.env.META_APP_ID,
-      client_secret: process.env.META_APP_SECRET,
-      fb_exchange_token: shortToken,
-    },
-  })
-  return res.data.access_token
 }
