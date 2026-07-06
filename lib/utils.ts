@@ -54,6 +54,23 @@ function spMidnight(y: number, m: number, d: number): Date {
   return new Date(Date.UTC(y, m, d, 3, 0, 0)) // UTC+3 = SP midnight
 }
 
+// Intervalo personalizado 'YYYY-MM-DD' → [meia-noite SP do início, fim do dia SP do fim].
+// Valida formato, ordem e span máximo (370 dias). Retorna null se inválido.
+export function getCustomDateRange(
+  startStr?: string | null,
+  endStr?: string | null
+): { start: Date; end: Date } | null {
+  const re = /^\d{4}-\d{2}-\d{2}$/
+  if (!startStr || !endStr || !re.test(startStr) || !re.test(endStr)) return null
+  const [ys, ms, ds] = startStr.split('-').map(Number)
+  const [ye, me, de] = endStr.split('-').map(Number)
+  const start = new Date(Date.UTC(ys, ms - 1, ds, 3, 0, 0)) // UTC+3 = meia-noite SP
+  const end = new Date(Date.UTC(ye, me - 1, de + 1, 3, 0, 0) - 1) // último ms do dia final
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return null
+  if (end.getTime() - start.getTime() > 370 * 86_400_000) return null
+  return { start, end }
+}
+
 export function getDateRange(filter: string): { start: Date; end: Date } {
   const now = new Date()
   const { y, m, d } = getSPDateParts(now)

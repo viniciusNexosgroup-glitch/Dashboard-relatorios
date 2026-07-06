@@ -5,19 +5,42 @@ import { formatCurrency, formatNumber, formatPercent, formatDate } from '@/lib/u
 import {
   DollarSign, MessageSquare, Eye, Users, MousePointerClick, BarChart3,
   Wallet, Calendar, Infinity as InfinityIcon, RefreshCw, Image as ImageIcon,
-  ChevronRight, Target, ShoppingCart,
+  ChevronRight, ChevronLeft, Target, ShoppingCart,
 } from 'lucide-react'
 import { GoogleIcon } from '@/components/icons/GoogleIcon'
 import { GOOGLE_CHANNEL_LABEL, GOOGLE_CHANNEL_CLASS_DARK } from '@/lib/google-channel'
 
-const PERIODS = [
+// Períodos rápidos: os com `key` usam o cálculo padrão do servidor; os com `days`
+// viram um intervalo personalizado calculado no cliente (mesmo caminho do calendário)
+const QUICK_PERIODS: ({ key: string; label: string } | { days: number; label: string })[] = [
   { key: 'today', label: 'Hoje' },
   { key: 'yesterday', label: 'Ontem' },
-  { key: 'last7days', label: '7 dias' },
-  { key: 'last30days', label: '30 dias' },
+  { key: 'last7days', label: 'Últimos 7 dias' },
+  { days: 14, label: 'Últimos 14 dias' },
+  { key: 'last30days', label: 'Últimos 30 dias' },
+  { days: 90, label: 'Últimos 90 dias' },
   { key: 'thisMonth', label: 'Este mês' },
   { key: 'lastMonth', label: 'Mês anterior' },
 ]
+
+const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+const fmtYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// Células do mês: padding vazio até o 1º dia da semana + 'YYYY-MM-DD' de cada dia
+function monthCells(year: number, month: number): (string | null)[] {
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (string | null)[] = Array(firstWeekday).fill(null)
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+  }
+  return cells
+}
+
+const monthTitle = (year: number, month: number) =>
+  new Date(year, month, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
 // Meta cobra ~12,15% de impostos sobre a recarga — saldo liquido = bruto * (1 - 0.1215)
 const META_TAX = 0.1215
@@ -80,8 +103,18 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
     })
   }
 
+  // ── Seletor de período: calendário personalizado (estilo Criativivo) ──
+  const today = new Date()
+  const todayStr = fmtYMD(today)
+  const minStr = fmtYMD(new Date(today.getTime() - 89 * 86_400_000)) // retenção: 90 dias de histórico
+  const [calBase, setCalBase] = useState({ y: today.getFullYear(), m: today.getMonth() }) // mês da DIREITA
+  const [selStart, setSelStart] = useState<string | null>(null)
+  const [selEnd, setSelEnd] = useState<string | null>(null)
+
   async function changePeriod(key: string) {
     setShowPeriods(false)
+    setSelStart(null)
+    setSelEnd(null)
     if (key === period) return
     setLoading(true)
     try {
@@ -95,6 +128,81 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
       setLoading(false)
     }
   }
+
+  async function changeCustom(startStr: string, endStr: string) {
+    setShowPeriods(false)
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/shared/${token}/metrics?period=custom&start=${startStr}&end=${endStr}`)
+      if (res.ok) {
+        const json = await res.json()
+        setData(json)
+        setPeriod('custom')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function quickCustom(days: number) {
+    const end = new Date()
+    const start = new Date(end.getTime() - (days - 1) * 86_400_000)
+    setSelStart(fmtYMD(start))
+    setSelEnd(fmtYMD(end))
+    changeCustom(fmtYMD(start), fmtYMD(end))
+  }
+
+  // 1º clique marca o início; 2º clique marca o fim e aplica (invertendo se preciso)
+  function pickDay(day: string) {
+    if (!selStart || (selStart && selEnd)) {
+      setSelStart(day)
+      setSelEnd(null)
+      return
+    }
+    const [a, b] = day < selStart ? [day, selStart] : [selStart, day]
+    setSelStart(a)
+    setSelEnd(b)
+    changeCustom(a, b)
+  }
+
+  const leftDate = new Date(calBase.y, calBase.m - 1, 1)
+  const canGoNext = calBase.y < today.getFullYear() || (calBase.y === today.getFullYear() && calBase.m < today.getMonth())
+
+  const renderMonth = (y: number, m: number) => (
+    <div className="w-full">
+      <p className="text-center text-sm font-medium text-slate-200 capitalize mb-2">{monthTitle(y, m)}</p>
+      <div className="grid grid-cols-7 gap-y-1 text-center">
+        {WEEKDAYS.map((w) => (
+          <span key={w} className="text-[10px] text-slate-500">{w}</span>
+        ))}
+        {monthCells(y, m).map((day, i) => {
+          if (!day) return <span key={`e${i}`} />
+          const disabled = day > todayStr || day < minStr
+          const isEdge = day === selStart || day === selEnd
+          const inRange = !!selStart && !!selEnd && day > selStart && day < selEnd
+          return (
+            <button
+              key={day}
+              type="button"
+              disabled={disabled}
+              onClick={() => pickDay(day)}
+              className={`h-8 w-8 mx-auto rounded-md text-xs transition-colors ${
+                disabled
+                  ? 'text-slate-700 cursor-default'
+                  : isEdge
+                    ? 'bg-blue-600 text-white font-semibold'
+                    : inRange
+                      ? 'bg-blue-600/25 text-blue-200'
+                      : 'text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              {parseInt(day.slice(8), 10)}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   // ── Split por plataforma (Meta e Google NÃO se misturam, igual à Criativivo) ──
   const meta = data.byPlatform?.META
@@ -228,18 +336,54 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
                 Alterar período
               </button>
               {showPeriods && (
-                <div className="absolute z-20 mt-2 w-44 bg-[#16233d] border border-slate-700 rounded-lg shadow-xl p-1">
-                  {PERIODS.map((p) => (
+                <div className="absolute z-30 mt-2 bg-[#16233d] border border-slate-700 rounded-xl shadow-2xl flex flex-col sm:flex-row w-[min(94vw,640px)] max-h-[80vh] overflow-y-auto">
+                  {/* Períodos rápidos */}
+                  <div className="sm:w-44 shrink-0 p-2 border-b sm:border-b-0 sm:border-r border-slate-700">
+                    <p className="px-3 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Períodos rápidos</p>
+                    {QUICK_PERIODS.map((q) => (
+                      <button
+                        key={q.label}
+                        onClick={() => ('days' in q ? quickCustom(q.days) : changePeriod(q.key))}
+                        className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          'key' in q && period === q.key ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700/60'
+                        }`}
+                      >
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Calendário: escolha o dia inicial e o final */}
+                  <div className="relative p-4 flex-1">
                     <button
-                      key={p.key}
-                      onClick={() => changePeriod(p.key)}
-                      className={`block w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        period === p.key ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700/60'
-                      }`}
+                      type="button"
+                      onClick={() => setCalBase(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))}
+                      className="absolute left-3 top-4 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+                      aria-label="Meses anteriores"
                     >
-                      {p.label}
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => canGoNext && setCalBase(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))}
+                      disabled={!canGoNext}
+                      className="absolute right-3 top-4 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-700 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                      aria-label="Próximos meses"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-6">
+                      {renderMonth(leftDate.getFullYear(), leftDate.getMonth())}
+                      {renderMonth(calBase.y, calBase.m)}
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 mt-3 text-center">
+                      {selStart && !selEnd
+                        ? `Início: ${selStart.split('-').reverse().join('/')} — agora clique no dia final`
+                        : 'Clique no dia inicial e depois no final — o período aplica sozinho'}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getDateRange } from '@/lib/utils'
+import { getDateRange, getCustomDateRange } from '@/lib/utils'
 import { computeClientMetrics } from '@/lib/metrics'
 
 // Endpoint PUBLICO (sem auth) — alimenta o dashboard compartilhado.
@@ -21,8 +21,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
   const url = new URL(req.url)
   const periodParam = url.searchParams.get('period') || 'last30days'
-  const period = ALLOWED_PERIODS.has(periodParam) ? periodParam : 'last30days'
-  const { start, end } = getDateRange(period)
+
+  // Período personalizado: ?period=custom&start=YYYY-MM-DD&end=YYYY-MM-DD
+  let period: string
+  let start: Date
+  let end: Date
+  if (periodParam === 'custom') {
+    const range = getCustomDateRange(url.searchParams.get('start'), url.searchParams.get('end'))
+    if (!range) return NextResponse.json({ error: 'Intervalo de datas inválido' }, { status: 400 })
+    period = 'custom'
+    start = range.start
+    end = range.end
+  } else {
+    period = ALLOWED_PERIODS.has(periodParam) ? periodParam : 'last30days'
+    ;({ start, end } = getDateRange(period))
+  }
 
   const data = await computeClientMetrics({ clientId: client.id, start, end })
 
