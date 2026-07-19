@@ -19,6 +19,21 @@ const metaApi = axios.create({ timeout: 60_000 })
 // delete+create de daily metrics.
 const syncingAccounts = new Set<string>()
 
+// Extrai a mensagem REAL do erro do Meta. Sem isso o syncLog guarda só o genérico
+// "Request failed with status code 400" do axios, que esconde a causa (ex: token
+// inválido, permissão faltando) e torna o diagnóstico às cegas.
+export function getMetaErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const e = (error.response?.data as any)?.error
+    if (e?.message) {
+      const code = e.code ? `[${e.code}${e.error_subcode ? `/${e.error_subcode}` : ''}] ` : ''
+      return `${code}${e.message}`
+    }
+    return error.message
+  }
+  return error instanceof Error ? error.message : 'Erro desconhecido'
+}
+
 // Regular sync: last 7 days — covers most attribution windows and minimises Disk IO.
 // Deep sync (weekly): last 60 days — catches retroactive attribution updates from Meta.
 // Use this instead of `date_preset: 'last_30d'`, which excludes today.
@@ -393,7 +408,7 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
     if (syncLogId) {
       await prisma.syncLog.update({
         where: { id: syncLogId },
-        data: { status: 'ERROR', errorMessage: error.message, finishedAt: new Date() },
+        data: { status: 'ERROR', errorMessage: getMetaErrorMessage(error), finishedAt: new Date() },
       }).catch(() => {})
     }
     // Se o erro for de token expirado/inválido, marca a conta e alerta o admin

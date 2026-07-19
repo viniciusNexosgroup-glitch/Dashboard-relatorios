@@ -13,13 +13,12 @@ export async function POST(req: NextRequest) {
   if ('error' in parsed) return parsed.error
   const body = parsed.data
 
-  // Se vier __system__, usa o token do .env
+  // '__system__' fica gravado como sentinela (NAO resolve pro valor do token aqui).
+  // O valor real e' lido no momento do sync via getMetaAccessToken()/getGoogleRefreshToken(),
+  // que buscam no banco — assim renovar o token do sistema vale pra todas as contas.
+  // Gravar o valor resolvido criava um snapshot que quebrava tudo quando o token expirava.
   const accessToken =
-    body.accessToken === '__system__'
-      ? body.platform === 'GOOGLE'
-        ? '__system__'
-        : process.env.META_SYSTEM_USER_TOKEN || ''
-      : body.accessToken || ''
+    body.accessToken === '__system__' ? '__system__' : body.accessToken || ''
 
   const refreshToken =
     body.refreshToken === '__system__'
