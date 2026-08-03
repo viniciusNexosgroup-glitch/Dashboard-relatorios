@@ -60,6 +60,83 @@ function getGoogleErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Erro desconhecido'
 }
 
+export interface GoogleSearchTerm {
+  term: string
+  impressions: number
+  clicks: number
+  conversions: number
+  cost: number
+}
+
+// Termos de pesquisa REAIS que as pessoas digitaram no Google e acionaram os
+// anúncios no período (recurso search_term_view — Rede de Pesquisa/Shopping).
+// Usado no PDF do cliente ("o que pesquisaram"). NÃO é gravado no banco —
+// é buscado ao vivo na hora do relatório, pra não inchar o Supabase free com
+// milhares de termos únicos por dia. Best-effort: quem chama trata a falha.
+// Obs: Performance Max/Display não expõem termos de pesquisa, então só campanhas
+// de Pesquisa aparecem aqui.
+export async function fetchGoogleSearchTerms(
+  adAccountId: string,
+  start: Date,
+  end: Date,
+  limit = 12
+): Promise<GoogleSearchTerm[]> {
+  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+  if (!account) return []
+
+  const refreshToken =
+    account.refreshToken && account.refreshToken !== '__system__'
+      ? account.refreshToken
+      : await getGoogleRefreshToken()
+  if (!refreshToken) return []
+
+  const accessToken = await getGoogleAdsAccessToken(refreshToken)
+  const customerId = account.accountId.replace(/-/g, '')
+  const sinceStr = start.toISOString().split('T')[0]
+  const untilStr = end.toISOString().split('T')[0]
+
+  // Sem segments.date no SELECT → a API agrega o período inteiro por termo.
+  // O mesmo termo ainda pode vir em grupos de anúncio diferentes, então
+  // reagregamos por texto no código. Puxa 300 linhas (já ordenadas por
+  // impressões) pra garantir que os mais pesquisados venham antes do corte.
+  const query = `
+    SELECT
+      search_term_view.search_term,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.conversions,
+      metrics.cost_micros
+    FROM search_term_view
+    WHERE segments.date BETWEEN '${sinceStr}' AND '${untilStr}'
+    ORDER BY metrics.impressions DESC
+    LIMIT 300
+  `
+
+  const res = await googleApi.post(
+    `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
+    { query },
+    { headers: getGoogleHeaders(accessToken) }
+  )
+
+  const rows = res.data.results || []
+  const byTerm = new Map<string, GoogleSearchTerm>()
+  for (const row of rows) {
+    const term = String(row.searchTermView?.searchTerm || '').trim()
+    if (!term) continue
+    const existing = byTerm.get(term) || { term, impressions: 0, clicks: 0, conversions: 0, cost: 0 }
+    existing.impressions += parseInt(row.metrics?.impressions || '0', 10)
+    existing.clicks += parseInt(row.metrics?.clicks || '0', 10)
+    existing.conversions += Number(row.metrics?.conversions || 0)
+    existing.cost += Number(row.metrics?.costMicros || 0) / 1_000_000
+    byTerm.set(term, existing)
+  }
+
+  return Array.from(byTerm.values())
+    .map((t) => ({ ...t, conversions: Math.round(t.conversions) }))
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, limit)
+}
+
 export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
   if (!account) throw new Error('Conta Google Ads não encontrada')
