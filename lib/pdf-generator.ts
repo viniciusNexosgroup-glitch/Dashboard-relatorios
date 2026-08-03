@@ -411,7 +411,8 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
             View,
             { style: styles.section },
             React.createElement(Text, { style: { ...styles.sectionTitle, borderLeftColor: '#ea4335' } }, 'PALAVRAS-CHAVE QUE MAIS CONVERTERAM — GOOGLE'),
-            React.createElement(Text, { style: { fontSize: 8, color: '#94a3b8', marginTop: -4, marginBottom: 6 } }, 'Termos que as pessoas digitaram no Google, clicaram no anúncio e geraram conversão no período (ordenados por conversões).'),
+            React.createElement(Text, { style: { fontSize: 8, color: '#94a3b8', marginTop: -4, marginBottom: 2 } }, 'Termos que as pessoas digitaram no Google, clicaram no anúncio e geraram conversão no período (ordenados por conversões).'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Oblique', color: '#94a3b8', marginBottom: 6 } }, 'Observação: o Google só revela buscas feitas por um número mínimo de pessoas. Buscas raras não aparecem aqui, então esta lista cobre parte das conversões do período — as demais vieram de pesquisas que o Google não detalha por termo.'),
             React.createElement(
               View,
               { style: styles.table },
