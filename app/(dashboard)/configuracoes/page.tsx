@@ -1,12 +1,14 @@
-import { getInstanceStatus } from '@/lib/evolution-api'
 import { getGoogleConnectedEmail, getGoogleConnectedAt } from '@/lib/google-oauth'
 import { getMetaTokenExpiresAt } from '@/lib/meta-token'
+import { getWhatsappHealth } from '@/lib/whatsapp-health'
 import { ConfigView } from '@/components/dashboard/ConfigView'
 
 export default async function ConfiguracoesPage() {
-  let whatsappStatus = { connected: false, state: 'unknown' }
+  // Checagem de saúde REAL (não só connectionState) — detecta "open mas quebrado"
+  let whatsappStatus = { connected: false, state: 'unknown', reason: null as string | null }
   try {
-    whatsappStatus = await getInstanceStatus()
+    const h = await getWhatsappHealth()
+    whatsappStatus = { connected: h.healthy, state: h.state, reason: h.reason }
   } catch {}
 
   const [googleEmail, googleAt, metaTokenExpiresAt] = await Promise.all([

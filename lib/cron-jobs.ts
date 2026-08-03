@@ -7,6 +7,7 @@ import { cleanOldData } from './cleanup'
 import { sendMonthlyReports } from './monthly-report'
 import { refreshMetaTokenIfNearExpiry, checkMetaTokenExpiryAlert } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
+import { checkWhatsappHealthAndAlert } from './whatsapp-health'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
 // Timezone is fixed to São Paulo so the schedule matches the user's day.
@@ -33,6 +34,10 @@ async function runSyncAllAccounts(triggerLabel: string, syncDays = 7) {
   }
   // Alerta o admin no WhatsApp se o token estiver a <= 10 dias de expirar
   await checkMetaTokenExpiryAlert().catch(() => {})
+  // Checa saúde REAL do WhatsApp (detecta sessão "open mas quebrada") — atualiza
+  // o cache lido pelo banner do dashboard e alerta o admin se degradado
+  const waHealth = await checkWhatsappHealthAndAlert().catch(() => null)
+  console.log(`${tag} [1/3] WhatsApp: ${waHealth?.healthy ? 'saudável' : `DEGRADADO — ${waHealth?.reason || 'erro na checagem'}`}`)
 
   // ── Etapa 2: Sync de todas as contas (atualiza métricas + saldo no banco) ──
   const accounts = await prisma.adAccount.findMany({ where: { active: true } })
@@ -143,7 +148,14 @@ export function startCronJobs() {
     warmGroupsCache().then((r) =>
       console.log(`[cron] groups cache warm: ${r.ok ? r.count + ' grupos' : 'falhou - ' + r.error}`)
     )
+    // Checa saúde do WhatsApp no startup também (popula o cache do banner)
+    checkWhatsappHealthAndAlert()
+      .then((h) => console.log(`[cron] WhatsApp health (startup): ${h.healthy ? 'saudável' : 'DEGRADADO'}`))
+      .catch(() => {})
   }, 30_000)
+  // Checagem de saúde do WhatsApp a cada 30min (mantém o banner do dashboard fresco
+  // mesmo fora dos horários de sync)
+  cron.schedule('*/30 * * * *', () => { checkWhatsappHealthAndAlert().catch(() => {}) }, { timezone: TZ })
   cron.schedule('*/25 * * * *', () => {
     warmGroupsCache().then((r) => {
       if (!r.ok) console.warn(`[cron] groups cache refresh falhou: ${r.error}`)

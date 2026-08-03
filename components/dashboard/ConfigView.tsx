@@ -7,7 +7,7 @@ import { ChangePasswordCard } from './ChangePasswordCard'
 import { GoogleAdsCard } from './GoogleAdsCard'
 
 interface Props {
-  whatsappStatus: { connected: boolean; state: string }
+  whatsappStatus: { connected: boolean; state: string; reason?: string | null }
   googleConnectedEmail?: string | null
   googleConnectedAt?: string | null
   googleEnv?: { clientId: boolean; clientSecret: boolean; developerToken: boolean }
@@ -75,18 +75,18 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
           {whatsappStatus.connected ? (
             <>
               <CheckCircle className="w-4 h-4 text-green-500" />
-              <span className="text-sm text-green-700 font-medium">Conectado</span>
+              <span className="text-sm text-green-700 font-medium">Conectado e saudável</span>
             </>
           ) : (
             <>
               <XCircle className="w-4 h-4 text-red-500" />
-              <span className="text-sm text-red-700 font-medium">Desconectado – Estado: {whatsappStatus.state}</span>
+              <span className="text-sm text-red-700 font-medium">Com problema – Estado: {whatsappStatus.state}</span>
             </>
           )}
         </div>
-        {!whatsappStatus.connected && (
-          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-            Configure <strong>EVOLUTION_API_URL</strong>, <strong>EVOLUTION_API_KEY</strong> e <strong>EVOLUTION_INSTANCE_NAME</strong> no arquivo <code>.env</code>.
+        {!whatsappStatus.connected && whatsappStatus.reason && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+            {whatsappStatus.reason}
           </div>
         )}
       </div>
