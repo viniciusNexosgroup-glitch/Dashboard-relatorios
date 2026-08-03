@@ -71,15 +71,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   footerText: { fontSize: 8, color: '#94a3b8' },
-  observations: {
-    backgroundColor: '#eff6ff',
-    borderLeftWidth: 3,
-    borderLeftColor: '#3b82f6',
-    padding: 10,
-    borderRadius: 4,
-    marginTop: 8,
-  },
-  obsText: { fontSize: 9, color: '#1e40af', lineHeight: 1.5 },
 })
 
 interface ReportData {
@@ -140,36 +131,7 @@ interface ReportData {
   }[]
 }
 
-function generateObservations(data: ReportData): string[] {
-  const obs: string[] = []
-  const { summary } = data
-  const msgConv = summary.totalMsgConv || 0
-  const cpm = summary.avgCostPerMsg || 0
-
-  if (summary.avgCtr > 2)
-    obs.push(`✓ CTR médio de ${formatPercent(summary.avgCtr)} está acima da média do mercado (>2%). Bom engajamento!`)
-  else
-    obs.push(`⚠ CTR médio de ${formatPercent(summary.avgCtr)} está abaixo de 2%. Revise os criativos.`)
-
-  if (cpm > 0 && cpm < 20)
-    obs.push(`✓ Custo por conversa de ${formatCurrency(cpm)} está eficiente.`)
-  else if (cpm >= 20)
-    obs.push(`⚠ Custo por conversa de ${formatCurrency(cpm)} é alto. Analise a segmentação.`)
-
-  if (summary.avgRoas && summary.avgRoas > 3)
-    obs.push(`✓ ROAS de ${summary.avgRoas.toFixed(2)}x indica boa rentabilidade das campanhas.`)
-
-  if (msgConv > 0)
-    obs.push(`${msgConv} conversas geradas no período com investimento de ${formatCurrency(summary.totalSpend)}.`)
-  else if (summary.totalLeads > 0)
-    obs.push(`${summary.totalLeads} leads gerados no período com investimento de ${formatCurrency(summary.totalSpend)}.`)
-
-  return obs
-}
-
 export async function generateReportPDF(data: ReportData): Promise<Buffer> {
-  const obs = generateObservations(data)
-
   // ── Separação por plataforma: bloco Meta quando há dados Meta;
   //    bloco Google SÓ para clientes com conta Google com atividade no período ──
   const meta = data.byPlatform?.META
@@ -483,20 +445,6 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
           ),
         ] : []),
       ] : []),
-
-      // Observations
-      React.createElement(
-        View,
-        { style: styles.section },
-        React.createElement(Text, { style: styles.sectionTitle }, 'ANÁLISE DE PERFORMANCE'),
-        React.createElement(
-          View,
-          { style: styles.observations },
-          ...obs.map((o, i) =>
-            React.createElement(Text, { style: { ...styles.obsText, marginBottom: i < obs.length - 1 ? 6 : 0 }, key: i }, o)
-          )
-        )
-      ),
 
       // Footer
       React.createElement(
