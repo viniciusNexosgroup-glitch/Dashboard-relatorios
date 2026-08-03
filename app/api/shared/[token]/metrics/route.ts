@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getDateRange, getCustomDateRange } from '@/lib/utils'
 import { computeClientMetrics } from '@/lib/metrics'
+import { applyMetaPeriodReach } from '@/lib/meta-ads'
 
 // Endpoint PUBLICO (sem auth) — alimenta o dashboard compartilhado.
 // Acesso somente pelo token aleatorio do cliente; retorna apenas os dados daquele cliente.
@@ -38,6 +39,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   }
 
   const data = await computeClientMetrics({ clientId: client.id, start, end })
+  // Corrige o Alcance do Meta com o valor deduplicado do período (a soma diária infla)
+  await applyMetaPeriodReach(data, client.id, start, end)
 
   return NextResponse.json({
     client: { company: client.company, name: client.name },

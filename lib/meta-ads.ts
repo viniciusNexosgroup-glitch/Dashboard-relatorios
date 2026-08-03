@@ -422,6 +422,79 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
   }
 }
 
+// ── Alcance / Frequência DEDUPLICADOS do período ──────────────────────────────
+// Alcance NÃO pode ser somado por dia: a mesma pessoa alcançada em vários dias
+// contaria várias vezes (por isso a soma diária inflava ~2x). O gerenciador do
+// Meta mostra o alcance ÚNICO do período. Buscamos esse valor direto na API
+// (nível conta, SEM time_increment), que bate exatamente com o gerenciador.
+// Cache curto em memória evita repetir a chamada quando o mesmo cliente/período
+// é reaberto (o sync atualiza os dados ~3x/dia, então 15min é seguro).
+interface MetaReach { reach: number; impressions: number; frequency: number }
+const reachCache = new Map<string, { data: MetaReach; exp: number }>()
+const REACH_TTL_MS = 15 * 60 * 1000
+
+export async function fetchMetaAccountReach(adAccountId: string, start: Date, end: Date): Promise<MetaReach | null> {
+  // As fronteiras vêm ancoradas em meia-noite UTC do dia do calendário, então
+  // o componente de data em UTC É o dia certo (ex: 2026-07-01). formatSPDate
+  // daria o dia errado aqui (00:00Z = 21h SP do dia anterior).
+  const since = start.toISOString().slice(0, 10)
+  const until = end.toISOString().slice(0, 10)
+  const cacheKey = `${adAccountId}:${since}:${until}`
+  const cached = reachCache.get(cacheKey)
+  if (cached && cached.exp > Date.now()) return cached.data
+
+  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+  if (!account) return null
+  const token =
+    account.accessToken === '__system__' || !account.accessToken
+      ? await getMetaAccessToken()
+      : account.accessToken
+
+  const res = await metaApi.get(`${META_API_BASE}/${account.accountId}/insights`, {
+    params: { access_token: token, fields: 'reach,frequency,impressions', time_range: JSON.stringify({ since, until }) },
+  })
+  const row = res.data?.data?.[0]
+  if (!row) return null
+  const data: MetaReach = {
+    reach: parseInt(row.reach || '0'),
+    impressions: parseInt(row.impressions || '0'),
+    frequency: parseFloat(row.frequency || '0'),
+  }
+  reachCache.set(cacheKey, { data, exp: Date.now() + REACH_TTL_MS })
+  return data
+}
+
+// Alcance deduplicado do cliente (soma as contas Meta ativas — cada conta já é
+// deduplicada em si; entre contas distintas o próprio Meta também não dedupa).
+export async function getClientMetaReach(clientId: string, start: Date, end: Date): Promise<{ reach: number; frequency: number } | null> {
+  const accounts = await prisma.adAccount.findMany({
+    where: { clientId, platform: 'META', active: true },
+    select: { id: true },
+  })
+  if (accounts.length === 0) return null
+  let totalReach = 0, totalImpr = 0, ok = false
+  for (const a of accounts) {
+    const r = await fetchMetaAccountReach(a.id, start, end).catch(() => null)
+    if (r) { totalReach += r.reach; totalImpr += r.impressions; ok = true }
+  }
+  if (!ok || totalReach === 0) return null
+  return { reach: totalReach, frequency: totalImpr / totalReach }
+}
+
+// Corrige Alcance/Frequência do Meta no objeto de métricas com o valor
+// deduplicado do período. Best-effort: se a API falhar, mantém o valor somado
+// (nunca derruba dashboard/relatório). Muta byPlatform.META e summary.totalReach.
+export async function applyMetaPeriodReach(metrics: any, clientId: string, start: Date, end: Date): Promise<void> {
+  const meta = metrics?.byPlatform?.META
+  if (!meta) return
+  const r = await getClientMetaReach(clientId, start, end).catch(() => null)
+  if (!r || r.reach <= 0) return
+  const googleReach = metrics?.byPlatform?.GOOGLE?.reach || 0
+  meta.reach = r.reach
+  meta.frequency = r.frequency
+  if (metrics.summary) metrics.summary.totalReach = r.reach + googleReach
+}
+
 // Parses "R$317,15" or "R$ 1.234,56" from a string into a number
 function parseBRBalance(text: string): number | null {
   const match = text.match(/R?\$\s*([\d.]+,\d{2}|\d+\.\d{2}|\d+)/i)
