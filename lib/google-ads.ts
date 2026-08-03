@@ -75,11 +75,14 @@ export interface GoogleSearchTerm {
 // milhares de termos únicos por dia. Best-effort: quem chama trata a falha.
 // Obs: Performance Max/Display não expõem termos de pesquisa, então só campanhas
 // de Pesquisa aparecem aqui.
+//
+// limit undefined = TODOS os termos que rodaram no período (pagina a API até o
+// fim). Um número corta nos N mais pesquisados.
 export async function fetchGoogleSearchTerms(
   adAccountId: string,
   start: Date,
   end: Date,
-  limit = 12
+  limit?: number
 ): Promise<GoogleSearchTerm[]> {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
   if (!account) return []
@@ -97,8 +100,7 @@ export async function fetchGoogleSearchTerms(
 
   // Sem segments.date no SELECT → a API agrega o período inteiro por termo.
   // O mesmo termo ainda pode vir em grupos de anúncio diferentes, então
-  // reagregamos por texto no código. Puxa 300 linhas (já ordenadas por
-  // impressões) pra garantir que os mais pesquisados venham antes do corte.
+  // reagregamos por texto no código. Sem LIMIT: pega TUDO que rodou.
   const query = `
     SELECT
       search_term_view.search_term,
@@ -109,32 +111,70 @@ export async function fetchGoogleSearchTerms(
     FROM search_term_view
     WHERE segments.date BETWEEN '${sinceStr}' AND '${untilStr}'
     ORDER BY metrics.impressions DESC
-    LIMIT 300
   `
 
-  const res = await googleApi.post(
-    `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
-    { query },
-    { headers: getGoogleHeaders(accessToken) }
-  )
-
-  const rows = res.data.results || []
+  // Paginação: o endpoint search devolve 10000 linhas por página (fixo na v24 —
+  // pageSize não é aceito) + nextPageToken. Percorre todas as páginas pra não
+  // perder termos de cauda longa. O teto de páginas é só trava de segurança.
   const byTerm = new Map<string, GoogleSearchTerm>()
-  for (const row of rows) {
-    const term = String(row.searchTermView?.searchTerm || '').trim()
-    if (!term) continue
-    const existing = byTerm.get(term) || { term, impressions: 0, clicks: 0, conversions: 0, cost: 0 }
-    existing.impressions += parseInt(row.metrics?.impressions || '0', 10)
-    existing.clicks += parseInt(row.metrics?.clicks || '0', 10)
-    existing.conversions += Number(row.metrics?.conversions || 0)
-    existing.cost += Number(row.metrics?.costMicros || 0) / 1_000_000
-    byTerm.set(term, existing)
-  }
+  let pageToken: string | undefined
+  let pages = 0
+  do {
+    const res = await googleApi.post(
+      `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
+      { query, ...(pageToken ? { pageToken } : {}) },
+      { headers: getGoogleHeaders(accessToken) }
+    )
+    for (const row of res.data.results || []) {
+      const term = String(row.searchTermView?.searchTerm || '').trim()
+      if (!term) continue
+      const existing = byTerm.get(term) || { term, impressions: 0, clicks: 0, conversions: 0, cost: 0 }
+      existing.impressions += parseInt(row.metrics?.impressions || '0', 10)
+      existing.clicks += parseInt(row.metrics?.clicks || '0', 10)
+      existing.conversions += Number(row.metrics?.conversions || 0)
+      existing.cost += Number(row.metrics?.costMicros || 0) / 1_000_000
+      byTerm.set(term, existing)
+    }
+    pageToken = res.data.nextPageToken
+  } while (pageToken && ++pages < 50)
 
-  return Array.from(byTerm.values())
+  const all = Array.from(byTerm.values())
     .map((t) => ({ ...t, conversions: Math.round(t.conversions) }))
     .sort((a, b) => b.impressions - a.impressions)
-    .slice(0, limit)
+  return typeof limit === 'number' ? all.slice(0, limit) : all
+}
+
+// Agrega os termos de pesquisa de TODAS as contas Google ativas de um cliente no
+// período e devolve APENAS os que geraram conversão, ranqueados por nº de
+// conversões (desempate por impressões). São as buscas que viraram resultado —
+// o que interessa pro cliente. Best-effort por conta (falha de uma não derruba
+// as outras). Fonte única usada pelo PDF e pelo dashboard interno (ficam iguais).
+// limit undefined = todos os termos com conversão.
+export async function getClientGoogleSearchTerms(
+  clientId: string,
+  start: Date,
+  end: Date,
+  limit?: number
+): Promise<GoogleSearchTerm[]> {
+  const googleAccounts = await prisma.adAccount.findMany({
+    where: { clientId, platform: 'GOOGLE', active: true },
+    select: { id: true },
+  })
+  if (googleAccounts.length === 0) return []
+
+  const lists = await Promise.all(
+    googleAccounts.map((a) => fetchGoogleSearchTerms(a.id, start, end).catch(() => []))
+  )
+  const merged = new Map<string, GoogleSearchTerm>()
+  for (const t of lists.flat()) {
+    const e = merged.get(t.term) || { term: t.term, impressions: 0, clicks: 0, conversions: 0, cost: 0 }
+    e.impressions += t.impressions; e.clicks += t.clicks; e.conversions += t.conversions; e.cost += t.cost
+    merged.set(t.term, e)
+  }
+  const converting = Array.from(merged.values())
+    .filter((t) => t.conversions > 0)
+    .sort((a, b) => b.conversions - a.conversions || b.impressions - a.impressions)
+  return typeof limit === 'number' ? converting.slice(0, limit) : converting
 }
 
 export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {

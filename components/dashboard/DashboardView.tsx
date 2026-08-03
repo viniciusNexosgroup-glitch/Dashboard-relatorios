@@ -5,6 +5,7 @@ import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
 import { MetricsChart } from '@/components/charts/MetricsChart'
 import { CampaignTable } from '@/components/dashboard/CampaignTable'
 import { GoogleCampaignTable } from '@/components/dashboard/GoogleCampaignTable'
+import { GoogleSearchTermsTable } from '@/components/dashboard/GoogleSearchTermsTable'
 import { AdTable } from '@/components/dashboard/AdTable'
 import {
   DollarSign,
@@ -48,6 +49,8 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
   const [selectedClient, setSelectedClient] = useState<string>('')
   const [dateFilter, setDateFilter] = useState('last30days')
   const [metrics, setMetrics] = useState<any>(null)
+  const [searchTerms, setSearchTerms] = useState<any[]>([])
+  const [loadingTerms, setLoadingTerms] = useState(false)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -90,11 +93,35 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
       }
       const data = await res.json()
       setMetrics(data)
+
+      // Termos de pesquisa Google — chamada AO VIVO separada (não vem do banco),
+      // só disparada quando o cliente tem Google com gasto no período.
+      const g = data?.byPlatform?.GOOGLE
+      const gCamps = (data?.campaigns || []).filter((c: any) => c.platform === 'GOOGLE')
+      if (gCamps.length > 0 || (g?.spend || 0) > 0) {
+        fetchSearchTerms()
+      } else {
+        setSearchTerms([])
+      }
     } catch (err: any) {
       setError(err.message || 'Falha ao buscar métricas')
       setMetrics(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchSearchTerms() {
+    if (!selectedClient) return
+    setLoadingTerms(true)
+    try {
+      const res = await fetch(`/api/google-search-terms?clientId=${selectedClient}&period=${dateFilter}`)
+      const data = await res.json().catch(() => ({ terms: [] }))
+      setSearchTerms(res.ok ? data.terms || [] : [])
+    } catch {
+      setSearchTerms([])
+    } finally {
+      setLoadingTerms(false)
     }
   }
 
@@ -394,6 +421,19 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">Campanhas Google</h3>
                 <GoogleCampaignTable campaigns={googleCampaigns} />
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-semibold text-gray-700">Palavras-chave que mais converteram</h3>
+                  {searchTerms.length > 0 && <span className="text-xs text-gray-400">{searchTerms.length} termos</span>}
+                </div>
+                <p className="text-xs text-gray-400 mb-4">Termos que as pessoas pesquisaram no Google, clicaram no anúncio e geraram conversão no período (ordenados por conversões).</p>
+                {loadingTerms ? (
+                  <p className="text-sm text-gray-400 text-center py-6">Carregando termos...</p>
+                ) : (
+                  <GoogleSearchTermsTable terms={searchTerms} />
+                )}
               </div>
             </>
           )}

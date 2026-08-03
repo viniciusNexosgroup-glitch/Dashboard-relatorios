@@ -443,13 +443,13 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
           )
         ),
 
-        // ── Palavras-chave mais pesquisadas (Google) — só se houver termos no período ──
+        // ── Palavras-chave que mais converteram (Google) — só se houver termos com conversão ──
         ...((data.googleSearchTerms?.length || 0) > 0 ? [
           React.createElement(
             View,
             { style: styles.section },
-            React.createElement(Text, { style: { ...styles.sectionTitle, borderLeftColor: '#ea4335' } }, 'PALAVRAS-CHAVE MAIS PESQUISADAS — GOOGLE'),
-            React.createElement(Text, { style: { fontSize: 8, color: '#94a3b8', marginTop: -4, marginBottom: 6 } }, 'Termos que as pessoas digitaram no Google e acionaram seus anúncios de Pesquisa no período.'),
+            React.createElement(Text, { style: { ...styles.sectionTitle, borderLeftColor: '#ea4335' } }, 'PALAVRAS-CHAVE QUE MAIS CONVERTERAM — GOOGLE'),
+            React.createElement(Text, { style: { fontSize: 8, color: '#94a3b8', marginTop: -4, marginBottom: 6 } }, 'Termos que as pessoas digitaram no Google, clicaram no anúncio e geraram conversão no período (ordenados por conversões).'),
             React.createElement(
               View,
               { style: styles.table },
@@ -458,12 +458,10 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
                 { style: { flexDirection: 'row', padding: '4 8', backgroundColor: '#f1f5f9', marginBottom: 2 } },
                 React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 3 } }, 'TERMO PESQUISADO'),
                 React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'IMPRESSÕES'),
-                React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.8, textAlign: 'right' } }, 'CLIQUES'),
-                React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 0.7, textAlign: 'right' } }, 'CTR'),
+                React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'CLIQUES'),
                 React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#64748b', flex: 1, textAlign: 'right' } }, 'CONVERSÕES')
               ),
               ...(data.googleSearchTerms || []).map((t, i) => {
-                const ctr = t.impressions > 0 ? (t.clicks / t.impressions) * 100 : 0
                 return React.createElement(
                   View,
                   {
@@ -477,9 +475,8 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
                   },
                   React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 3, paddingRight: 6 } }, t.term),
                   React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1, textAlign: 'right' } }, formatNumber(t.impressions)),
-                  React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 0.8, textAlign: 'right' } }, formatNumber(t.clicks)),
-                  React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 0.7, textAlign: 'right' } }, formatPercent(ctr)),
-                  React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1, textAlign: 'right' } }, formatNumber(t.conversions))
+                  React.createElement(Text, { style: { fontSize: 8, color: '#334155', flex: 1, textAlign: 'right' } }, formatNumber(t.clicks)),
+                  React.createElement(Text, { style: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b', flex: 1, textAlign: 'right' } }, formatNumber(t.conversions))
                 )
               })
             )
