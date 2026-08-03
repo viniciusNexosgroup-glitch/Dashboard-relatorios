@@ -47,11 +47,17 @@ export function formatSPDate(date: Date = new Date()): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-// Returns a Date representing midnight (00:00:00) in São Paulo timezone (UTC-3, no DST).
-// Stored as UTC, the wall-clock value in SP will be the y/m/d we requested.
-// JS Date constructor handles negative/overflow days correctly.
+// Fronteira de um dia do calendário SP, ANCORADA em meia-noite UTC.
+// Precisa casar com o ARMAZENAMENTO: o sync grava cada dia como
+// new Date("YYYY-MM-DD") = meia-noite UTC (00:00Z). Meta/Google reportam por
+// dia no fuso da conta (SP), e esse rótulo de data é guardado em 00:00Z.
+// Ancorar as fronteiras em meia-noite SP (03:00 UTC) desalinhava 3h e fazia
+// dias de fronteira vazarem pro mês/dia errado (ex: 01/08 caindo em "julho",
+// ou o próprio "hoje" sumindo). Como os buckets diários ficam espaçados de 24h
+// em 00:00Z, usar 00:00 UTC bate exatamente com o gerenciador do Meta.
+// getSPDateParts continua definindo QUAL dia do calendário é "hoje" em SP.
 function spMidnight(y: number, m: number, d: number): Date {
-  return new Date(Date.UTC(y, m, d, 3, 0, 0)) // UTC+3 = SP midnight
+  return new Date(Date.UTC(y, m, d, 0, 0, 0))
 }
 
 // Intervalo personalizado 'YYYY-MM-DD' → [meia-noite SP do início, fim do dia SP do fim].
@@ -64,8 +70,8 @@ export function getCustomDateRange(
   if (!startStr || !endStr || !re.test(startStr) || !re.test(endStr)) return null
   const [ys, ms, ds] = startStr.split('-').map(Number)
   const [ye, me, de] = endStr.split('-').map(Number)
-  const start = new Date(Date.UTC(ys, ms - 1, ds, 3, 0, 0)) // UTC+3 = meia-noite SP
-  const end = new Date(Date.UTC(ye, me - 1, de + 1, 3, 0, 0) - 1) // último ms do dia final
+  const start = new Date(Date.UTC(ys, ms - 1, ds, 0, 0, 0)) // meia-noite UTC do dia (casa com o storage)
+  const end = new Date(Date.UTC(ye, me - 1, de + 1, 0, 0, 0) - 1) // último ms do dia final
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return null
   if (end.getTime() - start.getTime() > 370 * 86_400_000) return null
   return { start, end }
