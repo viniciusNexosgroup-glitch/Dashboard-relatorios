@@ -425,11 +425,11 @@ export function DashboardView({ clients, lastSync, lastSyncByClient = {} }: Prop
 
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-semibold text-gray-700">Palavras-chave que mais converteram</h3>
+                  <h3 className="text-sm font-semibold text-gray-700">Palavras-chave mais pesquisadas</h3>
                   {searchTerms.length > 0 && <span className="text-xs text-gray-400">{searchTerms.length} termos</span>}
                 </div>
-                <p className="text-xs text-gray-400 mb-1">Termos que as pessoas pesquisaram no Google, clicaram no anúncio e geraram conversão no período (ordenados por conversões).</p>
-                <p className="text-xs text-gray-400 italic mb-4">O Google só revela buscas feitas por um número mínimo de pessoas — buscas raras não aparecem, então esta lista cobre parte das conversões (as demais vieram de pesquisas que o Google não detalha por termo).</p>
+                <p className="text-xs text-gray-400 mb-1">Termos que as pessoas pesquisaram no Google e acionaram seus anúncios de Pesquisa no período (ordenados pelos mais pesquisados).</p>
+                <p className="text-xs text-gray-400 italic mb-4">O Google só revela buscas feitas por um número mínimo de pessoas — buscas muito raras não aparecem por termo.</p>
                 {loadingTerms ? (
                   <p className="text-sm text-gray-400 text-center py-6">Carregando termos...</p>
                 ) : (

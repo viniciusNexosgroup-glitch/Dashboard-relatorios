@@ -145,16 +145,16 @@ export async function fetchGoogleSearchTerms(
 }
 
 // Agrega os termos de pesquisa de TODAS as contas Google ativas de um cliente no
-// período e devolve APENAS os que geraram conversão, ranqueados por nº de
-// conversões (desempate por impressões). São as buscas que viraram resultado —
-// o que interessa pro cliente. Best-effort por conta (falha de uma não derruba
-// as outras). Fonte única usada pelo PDF e pelo dashboard interno (ficam iguais).
-// limit undefined = todos os termos com conversão.
+// período e devolve os MAIS PESQUISADOS (ranqueados por impressões, desempate por
+// cliques). Cap padrão de 50 pra não virar um PDF gigante — o período inteiro pode
+// ter milhares de termos únicos (cauda longa de 1 impressão). Best-effort por conta
+// (falha de uma não derruba as outras). Fonte única usada pelo PDF e pelo dashboard
+// interno (ficam iguais).
 export async function getClientGoogleSearchTerms(
   clientId: string,
   start: Date,
   end: Date,
-  limit?: number
+  limit = 50
 ): Promise<GoogleSearchTerm[]> {
   const googleAccounts = await prisma.adAccount.findMany({
     where: { clientId, platform: 'GOOGLE', active: true },
@@ -171,10 +171,9 @@ export async function getClientGoogleSearchTerms(
     e.impressions += t.impressions; e.clicks += t.clicks; e.conversions += t.conversions; e.cost += t.cost
     merged.set(t.term, e)
   }
-  const converting = Array.from(merged.values())
-    .filter((t) => t.conversions > 0)
-    .sort((a, b) => b.conversions - a.conversions || b.impressions - a.impressions)
-  return typeof limit === 'number' ? converting.slice(0, limit) : converting
+  return Array.from(merged.values())
+    .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
+    .slice(0, limit)
 }
 
 export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
