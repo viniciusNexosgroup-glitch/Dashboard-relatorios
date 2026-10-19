@@ -16,6 +16,7 @@ const QUICK_PERIODS: ({ key: string; label: string } | { days: number; label: st
   { key: 'today', label: 'Hoje' },
   { key: 'yesterday', label: 'Ontem' },
   { key: 'last7days', label: 'Últimos 7 dias' },
+  { key: 'last15days', label: 'Últimos 15 dias' },
   { days: 14, label: 'Últimos 14 dias' },
   { key: 'last30days', label: 'Últimos 30 dias' },
   { days: 90, label: 'Últimos 90 dias' },

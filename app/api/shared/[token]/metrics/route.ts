@@ -6,7 +6,7 @@ import { applyMetaPeriodReach } from '@/lib/meta-ads'
 
 // Endpoint PUBLICO (sem auth) — alimenta o dashboard compartilhado.
 // Acesso somente pelo token aleatorio do cliente; retorna apenas os dados daquele cliente.
-const ALLOWED_PERIODS = new Set(['today', 'yesterday', 'last7days', 'last30days', 'thisMonth', 'lastMonth'])
+const ALLOWED_PERIODS = new Set(['today', 'yesterday', 'last7days', 'last15days', 'last30days', 'thisMonth', 'lastMonth'])
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params

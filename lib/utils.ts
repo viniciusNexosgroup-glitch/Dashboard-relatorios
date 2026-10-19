@@ -89,6 +89,8 @@ export function getDateRange(filter: string): { start: Date; end: Date } {
       return { start: spMidnight(y, m, d - 1), end: todaySP }
     case 'last7days':
       return { start: spMidnight(y, m, d - 7), end: now }
+    case 'last15days':
+      return { start: spMidnight(y, m, d - 15), end: now }
     case 'last30days':
       return { start: spMidnight(y, m, d - 30), end: now }
     case 'thisMonth':

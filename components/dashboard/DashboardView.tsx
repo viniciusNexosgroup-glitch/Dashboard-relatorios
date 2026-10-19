@@ -40,6 +40,7 @@ const DATE_FILTERS = [
   { label: 'Hoje', value: 'today' },
   { label: 'Ontem', value: 'yesterday' },
   { label: '7 dias', value: 'last7days' },
+  { label: '15 dias', value: 'last15days' },
   { label: '30 dias', value: 'last30days' },
   { label: 'Este mês', value: 'thisMonth' },
   { label: 'Mês anterior', value: 'lastMonth' },

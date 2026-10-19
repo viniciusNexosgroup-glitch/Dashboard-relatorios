@@ -9,6 +9,7 @@ export const periodSchema = z.enum([
   'today',
   'yesterday',
   'last7days',
+  'last15days',
   'last30days',
   'thisMonth',
   'lastMonth',
