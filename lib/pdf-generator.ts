@@ -104,6 +104,7 @@ interface ReportData {
     conversions: number
     resultCount?: number
     resultLabel?: string
+    followers?: number | null
     ctr: number
     cpc: number
     roas: number | null
@@ -121,6 +122,7 @@ interface ReportData {
     conversions: number
     resultCount?: number
     resultLabel?: string
+    followers?: number | null
   }[]
   googleSearchTerms?: {
     term: string
@@ -141,6 +143,12 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
   const metaAds = (data.ads || []).filter((a) => a.platform === 'META')
   const hasMeta = metaCampaigns.length > 0 || (meta?.spend || 0) > 0
   const hasGoogle = googleCampaigns.length > 0 || (google?.spend || 0) > 0
+
+  // Linha "+N seguidores" sob o resultado das campanhas de perfil do Instagram
+  const followersLine = (followers?: number | null) =>
+    followers != null
+      ? React.createElement(Text, { style: { fontSize: 6, color: '#16a34a', fontFamily: 'Helvetica-Bold' } }, `+${formatNumber(followers)} seguidores`)
+      : null
 
   const cardsRow = (cards: { label: string; value: string }[]) =>
     React.createElement(
@@ -198,7 +206,14 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
             { label: 'Cliques', value: formatNumber(meta?.clicks || 0) },
             { label: 'Frequência', value: (meta?.frequency || 0).toFixed(2) },
             { label: 'CTR Médio', value: formatPercent(meta?.avgCtr || 0) },
-          ])
+          ]),
+          // Campanhas que levam ao perfil do Instagram
+          ...((meta?.profileVisits || 0) > 0 ? [cardsRow([
+            { label: 'Visitas ao Perfil', value: formatNumber(meta?.profileVisits || 0) },
+            { label: 'Custo por Visita', value: (meta?.costPerProfileVisit || 0) > 0 ? formatCurrency(meta?.costPerProfileVisit || 0) : 'N/A' },
+            { label: 'Seguidores', value: formatNumber(meta?.followers || 0) },
+            { label: 'Custo por Seguidor', value: (meta?.costPerFollower || 0) > 0 ? formatCurrency(meta?.costPerFollower || 0) : 'N/A' },
+          ])] : [])
         ),
       ] : []),
 
@@ -265,7 +280,8 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
                 View,
                 { style: { flex: 1.4, alignItems: 'flex-end' } },
                 React.createElement(Text, { style: { fontSize: 8, color: '#334155' } }, formatNumber(rc)),
-                rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, rl) : null
+                rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, rl) : null,
+                followersLine(c.followers)
               ),
               React.createElement(
                 View,
@@ -327,7 +343,8 @@ export async function generateReportPDF(data: ReportData): Promise<Buffer> {
                 View,
                 { style: { flex: 1.4, alignItems: 'flex-end' } },
                 React.createElement(Text, { style: { fontSize: 8, color: '#334155' } }, formatNumber(rc)),
-                rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, rl) : null
+                rl ? React.createElement(Text, { style: { fontSize: 6, color: '#94a3b8' } }, rl) : null,
+                followersLine(ad.followers)
               ),
               React.createElement(
                 View,

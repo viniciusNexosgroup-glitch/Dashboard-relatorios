@@ -18,6 +18,7 @@ interface Ad {
   conversions: number
   resultCount: number
   resultLabel: string
+  followers?: number | null
 }
 
 interface Props {
@@ -62,6 +63,7 @@ export function AdTable({ ads }: Props) {
                 <p className="text-xs text-gray-400">Resultados</p>
                 <p className="text-sm font-semibold text-gray-800">{formatNumber(ad.resultCount)}</p>
                 <p className="text-xs text-gray-400 truncate">{ad.resultLabel || ' '}</p>
+                {ad.followers != null && <p className="text-xs font-medium text-emerald-600 truncate">+{formatNumber(ad.followers)} seguidores</p>}
               </div>
               <div className="text-right w-36 px-2">
                 <p className="text-xs text-gray-400">Custo/Result.</p>

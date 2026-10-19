@@ -8,7 +8,9 @@ import { isMetaTokenError, markTokenError, clearTokenError } from './token-alert
 // Verifique compatibilidade em https://developers.facebook.com/docs/graph-api/changelog
 const META_API_VERSION = process.env.META_API_VERSION || 'v19.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
-const INSIGHT_FIELDS = 'spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,actions,purchase_roas'
+// instagram_profile_visits / instagram_profile_follow são campos próprios do insights
+// (NÃO vêm em `actions`) — usados nas campanhas que levam ao perfil do Instagram.
+const INSIGHT_FIELDS = 'spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,actions,purchase_roas,instagram_profile_visits,instagram_profile_follow'
 
 // Cliente axios dedicado pro Meta com timeout de 60s — protege o sync de travar
 // caso a API do Meta lentifique ou pare de responder.
@@ -58,7 +60,9 @@ function buildMetricData(day: any) {
     parseActions(day.actions, 'onsite_conversion.total_messaging_connection')
   const conversions = parseActions(day.actions, 'offsite_conversion.fb_pixel_purchase')
   const linkClicks = parseInt(day.inline_link_clicks || '0')
-  const profileVisits = parseActions(day.actions, 'instagram_profile_visit')
+  const profileVisits =
+    parseInt(day.instagram_profile_visits || '0') || parseActions(day.actions, 'instagram_profile_visit')
+  const instagramFollows = parseInt(day.instagram_profile_follow || '0')
   const landingPageViews =
     parseActions(day.actions, 'landing_page_view') ||
     parseActions(day.actions, 'onsite_conversion.landing_page_view')
@@ -78,6 +82,7 @@ function buildMetricData(day: any) {
     msgConversations: msgConv,
     conversions,
     profileVisits,
+    instagramFollows,
     landingPageViews,
     costPerLead: primaryLeads > 0 ? spend / primaryLeads : null,
     costPerConv: conversions > 0 ? spend / conversions : null,
@@ -161,6 +166,29 @@ export async function syncMetaAccount(adAccountId: string, syncDays = 7) {
       return { externalId: c.id, dbId: db.id }
     })
     for (const r of campaignResults) campaignExternalToDb.set(r.externalId, r.dbId)
+
+    // ── 1b. Destino dos conjuntos (perfil do IG, WhatsApp, site...) por campanha ──
+    // Best-effort: define como o relatório mostra o resultado (ex: campanha que leva ao
+    // perfil do Instagram → visitas ao perfil + seguidores). Falha aqui não derruba o sync.
+    try {
+      const adSetsRaw = await fetchAllPages(
+        `${META_API_BASE}/${accountExternalId}/adsets`,
+        { access_token: token, fields: 'campaign_id,destination_type', limit: 500 }
+      )
+      const destByCampaign = new Map<string, string>()
+      for (const s of adSetsRaw) {
+        if (!s.campaign_id || !s.destination_type) continue
+        // Se qualquer conjunto da campanha leva ao perfil, a campanha é de perfil
+        if (!destByCampaign.has(s.campaign_id) || s.destination_type === 'INSTAGRAM_PROFILE') {
+          destByCampaign.set(s.campaign_id, s.destination_type)
+        }
+      }
+      await parallelMap(Array.from(destByCampaign.entries()), 15, ([externalId, destinationType]) =>
+        prisma.campaign.updateMany({ where: { adAccountId, externalId }, data: { destinationType } })
+      )
+    } catch (err: any) {
+      console.warn(`[meta-sync] destino dos conjuntos indisponível (${accountExternalId}):`, err.message)
+    }
 
     // ── 2. Campaign insights — covers last 60 days through today (SP timezone) ──
     const timeRange = getSyncTimeRange(effectiveDays)

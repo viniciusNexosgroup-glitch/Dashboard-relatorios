@@ -15,6 +15,7 @@ interface Campaign {
   conversions: number
   resultCount: number
   resultLabel: string
+  followers?: number | null
   roas: number | null
 }
 
@@ -57,6 +58,7 @@ export function CampaignTable({ campaigns }: Props) {
                 <td className="py-2.5 pr-4 text-right">
                   <p className="text-gray-800">{formatNumber(c.resultCount)}</p>
                   {c.resultLabel && <p className="text-xs text-gray-400 mt-0.5">{c.resultLabel}</p>}
+                  {c.followers != null && <p className="text-xs font-medium text-emerald-600 mt-0.5">+{formatNumber(c.followers)} seguidores</p>}
                 </td>
                 <td className="py-2.5 pr-4 text-right">
                   <p className="text-gray-700">{costPerResult ? formatCurrency(costPerResult) : '—'}</p>

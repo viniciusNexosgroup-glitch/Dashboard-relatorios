@@ -234,6 +234,17 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
       info: 'Média de vezes que cada pessoa viu os anúncios (impressões ÷ alcance). Muito alta pode indicar anúncio saturado.' },
     { label: 'CTR Médio', value: formatPercent(meta.ctr || 0), icon: MousePointerClick,
       info: 'Taxa de cliques: % das exibições que viraram clique. Quanto maior, mais o anúncio chama atenção.' },
+    // Campanhas que levam ao perfil do Instagram
+    ...((meta.profileVisits || 0) > 0 ? [
+      { label: 'Visitas ao Perfil', value: formatNumber(meta.profileVisits), icon: Eye,
+        info: 'Visitas ao perfil do Instagram geradas pelas campanhas que levam ao perfil.' },
+      { label: 'Custo por Visita', value: (meta.costPerProfileVisit || 0) > 0 ? formatCurrency(meta.costPerProfileVisit) : 'N/A', icon: DollarSign,
+        info: 'Investimento das campanhas de perfil dividido pelas visitas ao perfil.' },
+      { label: 'Seguidores', value: formatNumber(meta.followers || 0), icon: Users,
+        info: 'Pessoas que começaram a seguir o perfil do Instagram depois de interagir com os anúncios.' },
+      { label: 'Custo por Seguidor', value: (meta.costPerFollower || 0) > 0 ? formatCurrency(meta.costPerFollower) : 'N/A', icon: DollarSign,
+        info: 'Investimento das campanhas de perfil dividido pelos seguidores ganhos.' },
+    ] : []),
   ] : []
 
   const googleKpis = google ? [
@@ -459,6 +470,7 @@ export function SharedDashboard({ token, companyName, contactName, initialPeriod
                           <td className="px-3 py-3 text-right">
                             <span className="text-slate-100">{formatNumber(node.resultCount || 0)}</span>
                             {node.resultLabel && <span className="block text-[10px] text-slate-500">{node.resultLabel}</span>}
+                            {node.followers != null && <span className="block text-[10px] font-medium text-emerald-400">+{formatNumber(node.followers)} seguidores</span>}
                           </td>
                           <td className="px-3 py-3 text-right text-slate-200">{node.cpr != null ? formatCurrency(node.cpr) : '—'}</td>
                           <td className="px-5 py-3 text-right text-slate-200">{formatNumber(node.linkClicks || 0)}</td>

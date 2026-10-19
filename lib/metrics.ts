@@ -8,23 +8,27 @@ import { getResultByObjective } from './result-by-objective'
 type RawAgg = {
   spend: number; impressions: number; leads: number; msgConv: number
   conversions: number; profileVisits: number; landingPageViews: number; linkClicks: number
+  instagramFollows: number
 }
-const emptyAgg = (): RawAgg => ({ spend: 0, impressions: 0, leads: 0, msgConv: 0, conversions: 0, profileVisits: 0, landingPageViews: 0, linkClicks: 0 })
+const emptyAgg = (): RawAgg => ({ spend: 0, impressions: 0, leads: 0, msgConv: 0, conversions: 0, profileVisits: 0, landingPageViews: 0, linkClicks: 0, instagramFollows: 0 })
 function addMetric(agg: RawAgg, m: any) {
   agg.spend += m.spend; agg.impressions += m.impressions
   agg.leads += m.leads; agg.msgConv += (m.msgConversations || 0); agg.conversions += m.conversions
   agg.profileVisits += (m.profileVisits || 0); agg.landingPageViews += (m.landingPageViews || 0); agg.linkClicks += (m.linkClicks || 0)
+  agg.instagramFollows += (m.instagramFollows || 0)
 }
 function addAgg(dst: RawAgg, src: RawAgg) {
   dst.spend += src.spend; dst.impressions += src.impressions; dst.leads += src.leads; dst.msgConv += src.msgConv
   dst.conversions += src.conversions; dst.profileVisits += src.profileVisits; dst.landingPageViews += src.landingPageViews; dst.linkClicks += src.linkClicks
+  dst.instagramFollows += src.instagramFollows
 }
-function nodeMetrics(objective: string | null | undefined, agg: RawAgg) {
+function nodeMetrics(objective: string | null | undefined, destinationType: string | null | undefined, agg: RawAgg) {
   const r = getResultByObjective(objective, {
     leads: agg.leads, msgConv: agg.msgConv, conversions: agg.conversions,
     profileVisits: agg.profileVisits, landingPageViews: agg.landingPageViews, linkClicks: agg.linkClicks,
+    instagramFollows: agg.instagramFollows, destinationType,
   })
-  return { spend: agg.spend, resultCount: r.count, resultLabel: r.label, cpr: r.count > 0 ? agg.spend / r.count : null, linkClicks: agg.linkClicks }
+  return { spend: agg.spend, resultCount: r.count, resultLabel: r.label, cpr: r.count > 0 ? agg.spend / r.count : null, linkClicks: agg.linkClicks, followers: r.follows }
 }
 
 export interface ComputeMetricsInput {
@@ -39,7 +43,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   const metricSelect = {
     date: true, spend: true, impressions: true, reach: true, clicks: true,
     linkClicks: true, ctr: true, cpc: true, leads: true, msgConversations: true,
-    conversions: true, profileVisits: true, landingPageViews: true, roas: true, frequency: true,
+    conversions: true, profileVisits: true, landingPageViews: true, instagramFollows: true, roas: true, frequency: true,
   } as const
 
   const adAccounts = await prisma.adAccount.findMany({
@@ -49,7 +53,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
       fundingType: true, balance: true,
       campaigns: {
         select: {
-          id: true, name: true, status: true, objective: true,
+          id: true, name: true, status: true, objective: true, destinationType: true,
           dailyMetrics: { where: { date: { gte: start, lte: end } }, select: metricSelect },
           adSets: {
             select: {
@@ -80,12 +84,12 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   for (const account of adAccounts) {
     const platform = account.platform
     if (!byPlatform[platform]) {
-      byPlatform[platform] = { spend: 0, impressions: 0, reach: 0, clicks: 0, ctr: 0, cpcSum: 0, leads: 0, msgConversations: 0, conversions: 0, ctrCount: 0 }
+      byPlatform[platform] = { spend: 0, impressions: 0, reach: 0, clicks: 0, ctr: 0, cpcSum: 0, leads: 0, msgConversations: 0, conversions: 0, ctrCount: 0, profileVisits: 0, profileSpend: 0, followers: 0 }
     }
 
     for (const campaign of account.campaigns) {
       let campSpend = 0, campImpressions = 0, campReach = 0, campClicks = 0, campLinkClicks = 0
-      let campLeads = 0, campMsgConv = 0, campConversions = 0, campProfileVisits = 0, campLandingPageViews = 0
+      let campLeads = 0, campMsgConv = 0, campConversions = 0, campProfileVisits = 0, campLandingPageViews = 0, campFollows = 0
       let campCtr = 0, campCpc = 0, campRoas = 0, campRoasCount = 0, campCount = 0
 
       for (const m of campaign.dailyMetrics) {
@@ -113,6 +117,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
         campLeads += m.leads; campMsgConv += msgConv; campConversions += m.conversions
         campProfileVisits += (m as any).profileVisits || 0
         campLandingPageViews += (m as any).landingPageViews || 0
+        campFollows += (m as any).instagramFollows || 0
         campCtr += m.ctr; campCpc += m.cpc
         if (m.roas) { campRoas += m.roas; campRoasCount++ }
         campCount++
@@ -133,10 +138,17 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
       }
 
       if (campSpend > 0 || campImpressions > 0) {
-        const { count: resultCount, label: resultLabel } = getResultByObjective(campaign.objective, {
+        const { count: resultCount, label: resultLabel, follows } = getResultByObjective(campaign.objective, {
           leads: campLeads, msgConv: campMsgConv, conversions: campConversions,
           profileVisits: campProfileVisits, landingPageViews: campLandingPageViews, linkClicks: campLinkClicks,
+          instagramFollows: campFollows, destinationType: campaign.destinationType,
         })
+        // Totais de perfil do IG por plataforma: só campanhas de perfil (as demais têm visitas orgânicas)
+        if (follows !== null) {
+          byPlatform[platform].profileVisits += resultCount
+          byPlatform[platform].profileSpend += campSpend
+          byPlatform[platform].followers += follows
+        }
         campaignMap.set(campaign.id, {
           name: campaign.name,
           platform,
@@ -152,6 +164,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
           conversions: campConversions,
           resultCount,
           resultLabel,
+          followers: follows,
           cpr: resultCount > 0 ? campSpend / resultCount : null,
           ctr: campCount > 0 ? campCtr / campCount : 0,
           cpc: campCount > 0 ? campCpc / campCount : 0,
@@ -169,6 +182,8 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
     p.costPerMsg = p.msgConversations > 0 ? p.spend / p.msgConversations : 0
     p.costPerConv = p.conversions > 0 ? p.spend / p.conversions : 0
     p.frequency = p.reach > 0 ? p.impressions / p.reach : 0
+    p.costPerProfileVisit = p.profileVisits > 0 ? p.profileSpend / p.profileVisits : 0
+    p.costPerFollower = p.followers > 0 ? p.profileSpend / p.followers : 0
     delete p.ctrCount
     delete p.cpcSum
   }
@@ -199,19 +214,21 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
       for (const adSet of (campaign as any).adSets || []) {
         for (const ad of adSet.ads || []) {
           let adSpend = 0, adImpressions = 0, adReach = 0, adClicks = 0, adLinkClicks = 0
-          let adLeads = 0, adMsgConv = 0, adConversions = 0, adProfileVisits = 0, adLandingPageViews = 0
+          let adLeads = 0, adMsgConv = 0, adConversions = 0, adProfileVisits = 0, adLandingPageViews = 0, adFollows = 0
           let adCtr = 0, adCpc = 0, adCount = 0
           for (const m of ad.dailyMetrics) {
             adSpend += m.spend; adImpressions += m.impressions; adReach += m.reach
             adClicks += m.clicks; adLinkClicks += (m as any).linkClicks || 0
             adLeads += m.leads; adMsgConv += (m as any).msgConversations || 0; adConversions += m.conversions
             adProfileVisits += (m as any).profileVisits || 0; adLandingPageViews += (m as any).landingPageViews || 0
+            adFollows += (m as any).instagramFollows || 0
             adCtr += m.ctr; adCpc += m.cpc; adCount++
           }
           if (adSpend > 0 || adImpressions > 0) {
-            const { count: adResultCount, label: adResultLabel } = getResultByObjective(campaign.objective, {
+            const { count: adResultCount, label: adResultLabel, follows: adFollowers } = getResultByObjective(campaign.objective, {
               leads: adLeads, msgConv: adMsgConv, conversions: adConversions,
               profileVisits: adProfileVisits, landingPageViews: adLandingPageViews, linkClicks: adLinkClicks,
+              instagramFollows: adFollows, destinationType: campaign.destinationType,
             })
             adMap.set(ad.id, {
               name: ad.name,
@@ -224,6 +241,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
               msgConversations: adMsgConv, conversions: adConversions,
               resultCount: adResultCount,
               resultLabel: adResultLabel,
+              followers: adFollowers,
               cpr: adResultCount > 0 ? adSpend / adResultCount : null,
               ctr: adCount > 0 ? adCtr / adCount : 0,
               cpc: adCount > 0 ? adCpc / adCount : 0,
@@ -247,6 +265,7 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
   for (const account of adAccounts) {
     for (const campaign of account.campaigns) {
       const objective = campaign.objective
+      const destinationType = campaign.destinationType
       const adSetNodes: any[] = []
       const campAgg = emptyAgg()
 
@@ -257,26 +276,26 @@ export async function computeClientMetrics({ clientId, start, end }: ComputeMetr
           const adAgg = emptyAgg()
           for (const m of ad.dailyMetrics) addMetric(adAgg, m)
           if (adAgg.spend > 0 || adAgg.impressions > 0) {
-            adNodes.push({ id: ad.id, name: ad.name, status: ad.status, thumbnailUrl: ad.thumbnailUrl || null, ...nodeMetrics(objective, adAgg) })
+            adNodes.push({ id: ad.id, name: ad.name, status: ad.status, thumbnailUrl: ad.thumbnailUrl || null, ...nodeMetrics(objective, destinationType, adAgg) })
             addAgg(setAgg, adAgg)
           }
         }
         if (adNodes.length > 0) {
           adNodes.sort((a, b) => b.spend - a.spend)
-          adSetNodes.push({ id: adSet.id, name: adSet.name, status: adSet.status, ...nodeMetrics(objective, setAgg), ads: adNodes })
+          adSetNodes.push({ id: adSet.id, name: adSet.name, status: adSet.status, ...nodeMetrics(objective, destinationType, setAgg), ads: adNodes })
           addAgg(campAgg, setAgg)
         }
       }
 
       if (adSetNodes.length > 0) {
         adSetNodes.sort((a, b) => b.spend - a.spend)
-        tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, campAgg), adSets: adSetNodes })
+        tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, destinationType, campAgg), adSets: adSetNodes })
       } else {
         // Sem dados de anuncio — usa metricas da propria campanha (ex: Google Ads)
         const cAgg = emptyAgg()
         for (const m of campaign.dailyMetrics) addMetric(cAgg, m)
         if (cAgg.spend > 0 || cAgg.impressions > 0) {
-          tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, cAgg), adSets: [] })
+          tree.push({ id: campaign.id, name: campaign.name, platform: account.platform, status: campaign.status, ...nodeMetrics(objective, destinationType, cAgg), adSets: [] })
         }
       }
     }

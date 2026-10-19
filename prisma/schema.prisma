@@ -105,6 +105,7 @@ model Campaign {
   name            String
   status          String
   objective       String?
+  destinationType String?       // destino dos conjuntos no Meta (ex: INSTAGRAM_PROFILE, WHATSAPP, WEBSITE)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -169,6 +170,7 @@ model DailyMetric {
   linkClicks      Int       @default(0)
   profileVisits   Int       @default(0)
   landingPageViews Int      @default(0)
+  instagramFollows Int      @default(0)  // seguidores gerados no perfil do IG (Meta: instagram_profile_follow)
   costPerLead     Float?
   costPerConv     Float?
   roas            Float?

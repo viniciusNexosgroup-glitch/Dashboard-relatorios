@@ -9,23 +9,53 @@ export type ResultMetrics = {
   profileVisits: number
   landingPageViews: number
   linkClicks: number
+  instagramFollows?: number
+  destinationType?: string | null
+}
+
+export const PROFILE_VISITS_LABEL = 'Visitas ao perfil'
+
+// Campanha que leva as pessoas ao perfil do Instagram (ex: Tráfego/Reconhecimento
+// com destino "Perfil do Instagram"). Usa o destino real do conjunto quando o sync
+// já gravou; senão, heurística: sem conversas e com mais visitas ao perfil que à
+// página de destino (campanhas de mensagem também geram visitas orgânicas ao perfil).
+function isInstagramProfileCampaign(obj: string, m: ResultMetrics): boolean {
+  if (m.destinationType) return m.destinationType.toUpperCase() === 'INSTAGRAM_PROFILE'
+  const profileObjectives = [
+    'LINK_CLICKS', 'TRAFFIC', 'OUTCOME_TRAFFIC',
+    'REACH', 'BRAND_AWARENESS', 'OUTCOME_AWARENESS',
+    'OUTCOME_ENGAGEMENT', 'POST_ENGAGEMENT', 'PAGE_LIKES', 'ENGAGEMENT',
+  ]
+  return profileObjectives.includes(obj) && m.msgConv === 0 && m.profileVisits > 0 && m.profileVisits > m.landingPageViews
 }
 
 export function getResultByObjective(
   objective: string | null | undefined,
   m: ResultMetrics
-): { count: number; label: string } {
+): { count: number; label: string; follows: number | null } {
   const obj = (objective || '').toUpperCase()
+
+  // Campanha de perfil do Instagram: resultado = visitas ao perfil (+ seguidores ganhos)
+  if (isInstagramProfileCampaign(obj, m)) {
+    return { count: m.profileVisits, label: PROFILE_VISITS_LABEL, follows: m.instagramFollows || 0 }
+  }
+
+  const r = classify(obj, m)
+  return { ...r, follows: null }
+}
+
+function classify(obj: string, m: ResultMetrics): { count: number; label: string } {
+  // Visitas ao perfil NÃO entram aqui: só via isInstagramProfileCampaign (as demais
+  // campanhas também acumulam visitas orgânicas ao perfil, que não são o resultado delas).
 
   // Messaging objectives
   if (obj === 'MESSAGES' || obj === 'OUTCOME_MESSAGES') {
     return { count: m.msgConv, label: 'Conversas por mensagem' }
   }
 
-  // Engagement (pode ser conversas ou perfil)
+  // Engagement (conversas)
   if (obj === 'OUTCOME_ENGAGEMENT' || obj === 'POST_ENGAGEMENT' || obj === 'PAGE_LIKES' || obj === 'ENGAGEMENT') {
     if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
     return { count: 0, label: 'Engajamento' }
   }
 
@@ -54,14 +84,12 @@ export function getResultByObjective(
 
   // Awareness / Reach
   if (obj === 'REACH' || obj === 'BRAND_AWARENESS' || obj === 'OUTCOME_AWARENESS') {
-    if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
     return { count: 0, label: 'Alcance' }
   }
 
   // Fallback heurístico (ignora "leads" como ruído)
   if (m.msgConv > 0) return { count: m.msgConv, label: 'Conversas por mensagem' }
   if (m.conversions > 0) return { count: m.conversions, label: 'Conversões' }
-  if (m.profileVisits > 0) return { count: m.profileVisits, label: 'Visitas ao perfil' }
   if (m.landingPageViews > 0) return { count: m.landingPageViews, label: 'Visitas à pág. de destino' }
   if (m.linkClicks > 0) return { count: m.linkClicks, label: 'Cliques no link' }
   if (m.leads > 0) return { count: m.leads, label: 'Leads' }
