@@ -24,6 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(typeof parsed.data.active === 'boolean' ? { active: parsed.data.active } : {}),
         ...(typeof parsed.data.alertsEnabled === 'boolean' ? { alertsEnabled: parsed.data.alertsEnabled } : {}),
         ...(typeof parsed.data.reportsEnabled === 'boolean' ? { reportsEnabled: parsed.data.reportsEnabled } : {}),
+        ...(typeof parsed.data.biweeklyReportsEnabled === 'boolean' ? { biweeklyReportsEnabled: parsed.data.biweeklyReportsEnabled } : {}),
       },
     })
     return NextResponse.json(client)

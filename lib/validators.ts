@@ -24,6 +24,7 @@ export const clientBodySchema = z.object({
   active: z.boolean().optional(),          // toggle ativar/desativar cliente
   alertsEnabled: z.boolean().optional(),   // toggle de alertas de saldo
   reportsEnabled: z.boolean().optional(),  // toggle de relatorio mensal
+  biweeklyReportsEnabled: z.boolean().optional(),  // toggle de relatorio quinzenal
 })
 
 // POST /api/meta-ads/sync e /api/google-ads/sync

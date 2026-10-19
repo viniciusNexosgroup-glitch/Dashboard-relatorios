@@ -198,6 +198,7 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
             { time: 'Domingo 02:00', desc: 'Limpeza: métricas > 90 dias e logs de sync > 30 dias' },
             { time: 'Segunda 03:00', desc: 'Renovação automática do token Meta (válido por 60 dias)' },
             { time: 'Dia 1 às 09:30', desc: 'Envio automático do relatório mensal para todos os clientes' },
+            { time: 'Dia 16 às 09:30', desc: 'Relatório quinzenal (dias 01 a 15) para os clientes marcados como "Quinzenal"' },
             { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando saldo da conta pré-paga ficar < R$ 100 (cooldown 24h)' },
             { time: 'Sempre que detectar', desc: 'Alerta no WhatsApp quando a conta pausar por falha no pagamento do cartão (cooldown 24h)' },
           ].map((item) => (

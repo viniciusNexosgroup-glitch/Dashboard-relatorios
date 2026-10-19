@@ -4,7 +4,7 @@ import { syncMetaAccount } from './meta-ads'
 import { syncGoogleAccount } from './google-ads'
 import { checkAndAlertLowBalances, checkAndAlertPaymentIssues } from './balance-alerts'
 import { cleanOldData } from './cleanup'
-import { sendMonthlyReports } from './monthly-report'
+import { sendMonthlyReports, sendBiweeklyReports } from './monthly-report'
 import { refreshMetaTokenIfNearExpiry, checkMetaTokenExpiryAlert } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
 import { checkWhatsappHealthAndAlert } from './whatsapp-health'
@@ -88,6 +88,17 @@ async function runMonthlyReport() {
   }
 }
 
+async function runBiweeklyReport() {
+  console.log(`
+[cron biweekly-report] starting at ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
+  try {
+    const result = await sendBiweeklyReports()
+    console.log(`[cron biweekly-report] ${result.sent} enviados, ${result.skippedAlreadySent} já tinham, ${result.processed} processados`)
+  } catch (err: any) {
+    console.error('[cron biweekly-report] failed:', err.message)
+  }
+}
+
 // Renova o token Meta de longa duração (válido por 60 dias) trocando-o por outro novo.
 // Roda toda segunda-feira de madrugada — sempre mantém ≥53 dias de validade.
 async function runRefreshMetaToken() {
@@ -138,6 +149,11 @@ export function startCronJobs() {
   // fora do ar no dia 1 (ou o envio falhou no meio), completa nos dias seguintes.
   cron.schedule('30 9 1-3 * *', () => runMonthlyReport(), { timezone: TZ })
 
+  // Relatório quinzenal (dias 01-15 do mês atual) — dias 16 a 18 às 09:30, só para
+  // clientes com biweeklyReportsEnabled. Mesmo esquema idempotente + catch-up do mensal.
+  // Roda depois do sync das 08:00 do dia 16, que já traz o dia 15 completo.
+  cron.schedule('30 9 16-18 * *', () => runBiweeklyReport(), { timezone: TZ })
+
   // Refresh do token Meta — toda segunda às 03:00 SP. Tokens duram 60 dias,
   // então renovar semanalmente garante sempre >53 dias de validade restantes.
   cron.schedule('0 3 * * 1', () => runRefreshMetaToken(), { timezone: TZ })
@@ -170,5 +186,5 @@ export function startCronJobs() {
   // Cleanup semanal — domingo às 02:00 SP (mantém 90 dias de métricas, 30 dias de sync_logs)
   cron.schedule('0 2 * * 0', () => runCleanup(), { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
+  console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, biweekly day-16 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
 }

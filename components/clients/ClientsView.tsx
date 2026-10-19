@@ -15,6 +15,7 @@ interface Client {
   active: boolean
   alertsEnabled: boolean
   reportsEnabled: boolean
+  biweeklyReportsEnabled: boolean
   adAccounts: { id: string; platform: string; accountId: string; accountName: string; active: boolean }[]
   _count: { reports: number }
 }
@@ -52,7 +53,7 @@ export function ClientsView({ clients }: Props) {
     router.refresh()
   }
 
-  async function handleToggleSetting(client: Client, field: 'alertsEnabled' | 'reportsEnabled') {
+  async function handleToggleSetting(client: Client, field: 'alertsEnabled' | 'reportsEnabled' | 'biweeklyReportsEnabled') {
     await fetch(`/api/clients/${client.id}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -175,6 +176,18 @@ export function ClientsView({ clients }: Props) {
               >
                 {client.reportsEnabled ? <FileText className="w-3 h-3" /> : <FileX className="w-3 h-3" />}
                 Relatório
+              </button>
+              <button
+                onClick={() => handleToggleSetting(client, 'biweeklyReportsEnabled')}
+                title={client.biweeklyReportsEnabled ? 'Relatório quinzenal ATIVO (dia 16, período 01-15) — clique pra desativar' : 'Relatório quinzenal DESATIVADO — clique pra ativar (dia 16, período 01-15)'}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                  client.biweeklyReportsEnabled
+                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 border border-gray-200 line-through'
+                }`}
+              >
+                {client.biweeklyReportsEnabled ? <FileText className="w-3 h-3" /> : <FileX className="w-3 h-3" />}
+                Quinzenal
               </button>
             </div>
 

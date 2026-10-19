@@ -93,6 +93,12 @@ export function getDateRange(filter: string): { start: Date; end: Date } {
       return { start: spMidnight(y, m, d - 30), end: now }
     case 'thisMonth':
       return { start: spMidnight(y, m, 1), end: now }
+    case 'firstHalfThisMonth':
+      // Dias 01 a 15 do mês atual (relatório quinzenal enviado no dia 16)
+      return {
+        start: spMidnight(y, m, 1),
+        end: new Date(spMidnight(y, m, 16).getTime() - 1),
+      }
     case 'lastMonth':
       return {
         start: spMidnight(y, m - 1, 1),

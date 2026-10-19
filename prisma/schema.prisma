@@ -43,6 +43,7 @@ model Client {
   // Controles de envio automatico no grupo WhatsApp (independentes)
   alertsEnabled   Boolean   @default(true)  // alertas de saldo baixo
   reportsEnabled  Boolean   @default(true)  // relatorio mensal automatico
+  biweeklyReportsEnabled Boolean @default(false) // relatorio quinzenal (dia 16, periodo 01-15) — opt-in
   // Dashboard publico compartilhavel: token aleatorio -> /shared/{token}. null = sem link ativo.
   shareToken      String?   @unique
   createdAt       DateTime  @default(now())
