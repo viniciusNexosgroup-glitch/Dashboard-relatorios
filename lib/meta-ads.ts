@@ -492,6 +492,39 @@ export async function fetchMetaAccountReach(adAccountId: string, start: Date, en
   return data
 }
 
+// Criativos rodando AGORA na conta, por destino do conjunto (usado na aba Momento do Cliente).
+// Vai direto na API porque o banco só guarda o status configurado do anúncio: impulsionamentos
+// antigos continuam ACTIVE para sempre depois do fim do conjunto — por isso o filtro de
+// end_time/stop_time (sem ele uma conta chegou a contar ~100 "ativos" em vez de 15).
+export interface ActiveCreatives { whatsapp: number; instagramProfile: number; other: number }
+
+export async function countActiveCreatives(adAccountId: string): Promise<ActiveCreatives> {
+  const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
+  if (!account) throw new Error('Conta Meta não encontrada')
+  const token =
+    account.accessToken === '__system__' || !account.accessToken
+      ? await getMetaAccessToken()
+      : account.accessToken
+
+  const ads = await fetchAllPages(`${META_API_BASE}/${account.accountId}/ads`, {
+    access_token: token,
+    effective_status: JSON.stringify(['ACTIVE']),
+    fields: 'adset{destination_type,end_time},campaign{stop_time}',
+    limit: 500,
+  })
+  const now = Date.now()
+  const counts: ActiveCreatives = { whatsapp: 0, instagramProfile: 0, other: 0 }
+  for (const ad of ads) {
+    if (ad.adset?.end_time && Date.parse(ad.adset.end_time) < now) continue
+    if (ad.campaign?.stop_time && Date.parse(ad.campaign.stop_time) < now) continue
+    const dest: string = ad.adset?.destination_type || ''
+    if (dest.includes('WHATSAPP')) counts.whatsapp++
+    else if (dest === 'INSTAGRAM_PROFILE') counts.instagramProfile++
+    else counts.other++
+  }
+  return counts
+}
+
 // Alcance deduplicado do cliente (soma as contas Meta ativas — cada conta já é
 // deduplicada em si; entre contas distintas o próprio Meta também não dedupa).
 export async function getClientMetaReach(clientId: string, start: Date, end: Date): Promise<{ reach: number; frequency: number } | null> {

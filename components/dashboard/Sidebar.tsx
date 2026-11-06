@@ -13,12 +13,14 @@ import {
   Wallet,
   Send,
   Share2,
+  ClipboardList,
 } from 'lucide-react'
 
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/dashboards', label: 'Dashboards Clientes', icon: Share2 },
+  { href: '/momento', label: 'Momento do Cliente', icon: ClipboardList },
   { href: '/saldos', label: 'Saldos', icon: Wallet },
   { href: '/historico', label: 'Histórico WhatsApp', icon: Send },
   { href: '/relatorios', label: 'Relatórios', icon: FileText },

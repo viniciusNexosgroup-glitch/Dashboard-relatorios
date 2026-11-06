@@ -44,6 +44,9 @@ model Client {
   alertsEnabled   Boolean   @default(true)  // alertas de saldo baixo
   reportsEnabled  Boolean   @default(true)  // relatorio mensal automatico
   biweeklyReportsEnabled Boolean @default(false) // relatorio quinzenal (dia 16, periodo 01-15) — opt-in
+  // Aba "Momento do Cliente" (tabela interna enviada toda quarta ao grupo da equipe)
+  momentEnabled   Boolean   @default(false) // entra na tabela — opt-in
+  creativeQuality String?                   // avaliação manual do gestor: Ótimo | Bom | Regular | Ruim
   // Dashboard publico compartilhavel: token aleatorio -> /shared/{token}. null = sem link ativo.
   shareToken      String?   @unique
   createdAt       DateTime  @default(now())

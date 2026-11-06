@@ -61,6 +61,23 @@ export const metricsQuerySchema = z.object({
   period: periodSchema.optional(),
 })
 
+// GET /api/momento e /api/momento/pdf (mesmos valores de MOMENT_PERIODS em lib/client-moment)
+export const momentQuerySchema = z.object({
+  period: z.enum(['last7full', 'thisMonth', 'lastMonth']).optional(),
+})
+
+// PATCH /api/momento — liga/desliga a loja na tabela, define a qualidade ou troca o grupo de envio
+export const momentPatchSchema = z.union([
+  z.object({
+    clientId: cuid,
+    momentEnabled: z.boolean().optional(),
+    creativeQuality: z.enum(['Ótimo', 'Bom', 'Regular', 'Ruim']).nullable().optional(),
+  }),
+  z.object({
+    group: z.object({ id: z.string().trim().min(1).max(120), name: z.string().trim().min(1).max(160) }),
+  }),
+])
+
 // Helper: tenta parsear body JSON e validar.
 // Retorna `{ data }` em sucesso ou `{ error: NextResponse }` em falha.
 export async function parseJson<T extends z.ZodTypeAny>(

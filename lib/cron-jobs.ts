@@ -8,6 +8,7 @@ import { sendMonthlyReports, sendBiweeklyReports } from './monthly-report'
 import { refreshMetaTokenIfNearExpiry, checkMetaTokenExpiryAlert } from './meta-token'
 import { warmGroupsCache } from './whatsapp-groups-cache'
 import { checkWhatsappHealthAndAlert } from './whatsapp-health'
+import { sendClientMoment } from './client-moment'
 
 // Runs scheduled jobs in-process while the Next.js server is up.
 // Timezone is fixed to São Paulo so the schedule matches the user's day.
@@ -99,6 +100,17 @@ async function runBiweeklyReport() {
   }
 }
 
+async function runClientMoment() {
+  console.log(`\n[cron client-moment] starting at ${new Date().toLocaleString('pt-BR', { timeZone: TZ })}`)
+  try {
+    const result = await sendClientMoment()
+    if (result.sent) console.log(`[cron client-moment] tabela com ${result.rows} lojas enviada para ${result.group}`)
+    else console.log(`[cron client-moment] não enviado: ${result.reason}`)
+  } catch (err: any) {
+    console.error('[cron client-moment] failed:', err.message)
+  }
+}
+
 // Renova o token Meta de longa duração (válido por 60 dias) trocando-o por outro novo.
 // Roda toda segunda-feira de madrugada — sempre mantém ≥53 dias de validade.
 async function runRefreshMetaToken() {
@@ -154,6 +166,10 @@ export function startCronJobs() {
   // Roda depois do sync das 08:00 do dia 16, que já traz o dia 15 completo.
   cron.schedule('30 9 16-18 * *', () => runBiweeklyReport(), { timezone: TZ })
 
+  // Momento do Cliente — toda quarta às 09:30, tabela dos últimos 7 dias completos
+  // (qua a ter) para o grupo da equipe. Roda depois do sync das 08:00, que fecha a terça.
+  cron.schedule('30 9 * * 3', () => runClientMoment(), { timezone: TZ })
+
   // Refresh do token Meta — toda segunda às 03:00 SP. Tokens duram 60 dias,
   // então renovar semanalmente garante sempre >53 dias de validade restantes.
   cron.schedule('0 3 * * 1', () => runRefreshMetaToken(), { timezone: TZ })
@@ -186,5 +202,5 @@ export function startCronJobs() {
   // Cleanup semanal — domingo às 02:00 SP (mantém 90 dias de métricas, 30 dias de sync_logs)
   cron.schedule('0 2 * * 0', () => runCleanup(), { timezone: TZ })
 
-  console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, biweekly day-16 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
+  console.log('[cron] scheduled: sync 08h (7d) + 14h/20h (1d leve), deep sync sábado 01:00 (60d), monthly day-1 09:30, biweekly day-16 09:30, momento do cliente quarta 09:30, token segunda 03:00, groups cache a cada 25min, cleanup domingo 02:00 (SP)')
 }
