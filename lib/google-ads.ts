@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { prisma } from './prisma'
 import { getGoogleRefreshToken } from './google-oauth'
+import { formatCurrency, formatSPDate, getDateRange } from './utils'
 
 // Versão configurável via env — Google bloqueia versões antigas (~1 ano após release).
 // Em 2026-07 a mais recente é v24; v20 foi bloqueada (UNSUPPORTED_VERSION).
@@ -36,6 +37,59 @@ function getGoogleHeaders(accessToken: string, accountLoginCustomerId?: string |
     Authorization: `Bearer ${accessToken}`,
     'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN || '',
     ...(loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}),
+  }
+}
+
+type GoogleAccountRef = { id: string; accountId: string; loginCustomerId: string | null }
+
+function isPermissionDenied(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  const data = error.response?.data as {
+    error?: { details?: { errors?: { errorCode?: { authorizationError?: string } }[] }[] }
+  } | undefined
+  return !!data?.error?.details?.some((d) => d.errors?.some((e) => e.errorCode?.authorizationError === 'USER_PERMISSION_DENIED'))
+}
+
+// Procura, entre as contas acessíveis pelo login, a MCC que gerencia esta conta
+async function findGoogleManagerFor(customerId: string, accessToken: string): Promise<string | null> {
+  const headers = { Authorization: `Bearer ${accessToken}`, 'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN || '' }
+  const res = await googleApi.get(`${GOOGLE_API_BASE}/customers:listAccessibleCustomers`, { headers })
+  const ids: string[] = (res.data?.resourceNames || []).map((r: string) => r.replace('customers/', ''))
+  for (const id of ids) {
+    if (id === customerId) continue
+    try {
+      const r = await googleApi.post(
+        `${GOOGLE_API_BASE}/customers/${id}/googleAds:search`,
+        { query: `SELECT customer_client.id FROM customer_client WHERE customer_client.id = ${customerId}` },
+        { headers: { ...headers, 'login-customer-id': id } }
+      )
+      if (r.data?.results?.length) return id
+    } catch {
+      // não é MCC (ou não gerencia esta conta) — segue para a próxima
+    }
+  }
+  return null
+}
+
+// Consulta GAQL na conta. Conta vinculada sem a MCC (antes da correção ou cadastrada à mão)
+// recebe USER_PERMISSION_DENIED: descobre a MCC que a gerencia, grava em loginCustomerId e repete.
+async function googleSearch(account: GoogleAccountRef, accessToken: string, query: string) {
+  const customerId = account.accountId.replace(/-/g, '')
+  const run = async () =>
+    (await googleApi.post(
+      `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
+      { query },
+      { headers: getGoogleHeaders(accessToken, account.loginCustomerId) }
+    )).data?.results || []
+  try {
+    return await run()
+  } catch (error) {
+    if (account.loginCustomerId || !isPermissionDenied(error)) throw error
+    const managerId = await findGoogleManagerFor(customerId, accessToken)
+    if (!managerId) throw error
+    await prisma.adAccount.update({ where: { id: account.id }, data: { loginCustomerId: managerId } })
+    account.loginCustomerId = managerId
+    return run()
   }
 }
 
@@ -192,7 +246,6 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
   if (!refreshToken) throw new Error('Nenhum token Google configurado (conecte sua conta em Configurações)')
 
   const accessToken = await getGoogleAdsAccessToken(refreshToken)
-  const customerId = account.accountId.replace(/-/g, '')
 
   // Primeira sincronizacao bem-sucedida? Faz backfill de 60 dias pra ja nascer com historico.
   const hadSuccess = await prisma.syncLog.findFirst({ where: { adAccountId, status: 'SUCCESS' }, select: { id: true } })
@@ -231,15 +284,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
       ORDER BY segments.date DESC
     `
 
-    const res = await googleApi.post(
-      `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
-      { query },
-      {
-        headers: getGoogleHeaders(accessToken, account.loginCustomerId),
-      }
-    )
-
-    const rows = res.data.results || []
+    const rows = await googleSearch(account, accessToken, query)
     let recordsSynced = 0
 
     for (const row of rows) {
@@ -335,6 +380,48 @@ function mapGoogleStatus(status: string | undefined): number | null {
   }
 }
 
+interface GoogleAccountBudget {
+  name?: string
+  approvedStartDateTime?: string
+  approvedEndDateTime?: string
+  adjustedSpendingLimitMicros?: string
+  approvedSpendingLimitMicros?: string
+  amountServedMicros?: string
+}
+
+// Orçamento vigente: já começou e não terminou. Sem nenhum vigente, o de início mais recente.
+function pickCurrentBudget(budgets: GoogleAccountBudget[]): GoogleAccountBudget | undefined {
+  const now = Date.now()
+  const time = (s?: string) => (s ? Date.parse(s.replace(' ', 'T')) : NaN) // "2026-01-01 00:00:00" (fuso da conta)
+  const current = budgets.filter((b) => !(time(b.approvedStartDateTime) > now) && !(time(b.approvedEndDateTime) <= now))
+  return (current.length ? current : budgets).sort(
+    (a, b) => (time(b.approvedStartDateTime) || 0) - (time(a.approvedStartDateTime) || 0)
+  )[0]
+}
+
+// Anúncios parados: zero impressões no dia de ontem inteiro, tendo veiculado em algum dos
+// 7 dias anteriores. Em 60 dias de histórico nenhuma conta ativa zerou um dia por outro
+// motivo, então isso aponta para cobrança recusada no cartão (ou saldo esgotado).
+// Só vale se o sync da conta rodou hoje — dado faltando não pode virar alarme.
+async function googleAdsStoppedYesterday(adAccountId: string): Promise<boolean> {
+  const lastSync = await prisma.syncLog.findFirst({
+    where: { adAccountId, status: 'SUCCESS' },
+    orderBy: { finishedAt: 'desc' },
+    select: { finishedAt: true },
+  })
+  if (!lastSync?.finishedAt || formatSPDate(lastSync.finishedAt) !== formatSPDate()) return false
+
+  const yesterday = getDateRange('yesterday').start
+  const rows = await prisma.dailyMetric.groupBy({
+    by: ['date'],
+    where: { campaign: { adAccountId }, date: { gte: new Date(yesterday.getTime() - 7 * 86_400_000), lte: yesterday } },
+    _sum: { impressions: true },
+  })
+  const impressionsOn = (d: Date) => rows.find((r) => r.date.getTime() === d.getTime())?._sum.impressions || 0
+  const ranBefore = rows.some((r) => r.date.getTime() < yesterday.getTime() && (r._sum.impressions || 0) > 0)
+  return ranBefore && impressionsOn(yesterday) === 0
+}
+
 export async function refreshGoogleAccountFinancials(adAccountId: string): Promise<void> {
   const account = await prisma.adAccount.findUnique({ where: { id: adAccountId } })
   if (!account) throw new Error('Conta Google Ads nao encontrada')
@@ -347,70 +434,54 @@ export async function refreshGoogleAccountFinancials(adAccountId: string): Promi
   if (!refreshToken) throw new Error('Nenhum token Google configurado (conecte sua conta em Configuracoes)')
 
   const accessToken = await getGoogleAdsAccessToken(refreshToken)
-  const customerId = account.accountId.replace(/-/g, '')
-  const headers = getGoogleHeaders(accessToken, account.loginCustomerId)
 
-  const customerRes = await googleApi.post(
-    `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
-    {
-      query: `
-        SELECT
-          customer.currency_code,
-          customer.status
-        FROM customer
-        LIMIT 1
-      `,
-    },
-    { headers }
-  )
-
-  const customer = customerRes.data?.results?.[0]?.customer
+  const [customerRow] = await googleSearch(account, accessToken, `SELECT customer.currency_code, customer.status FROM customer LIMIT 1`)
+  const customer = customerRow?.customer
 
   try {
-    const budgetRes = await googleApi.post(
-      `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
-      {
-        query: `
-          SELECT
-            account_budget.name,
-            account_budget.status,
-            account_budget.adjusted_spending_limit_micros,
-            account_budget.adjusted_spending_limit_type,
-            account_budget.approved_spending_limit_micros,
-            account_budget.approved_spending_limit_type,
-            account_budget.amount_served_micros,
-            account_budget.total_adjustments_micros
-          FROM account_budget
-          WHERE account_budget.status = APPROVED
-          LIMIT 1
-        `,
-      },
-      { headers }
+    // Uma conta pode ter vários orçamentos aprovados (antigos já encerrados + o vigente)
+    const budgetRows = await googleSearch(account, accessToken, `
+      SELECT
+        account_budget.name,
+        account_budget.approved_start_date_time,
+        account_budget.approved_end_date_time,
+        account_budget.adjusted_spending_limit_micros,
+        account_budget.approved_spending_limit_micros,
+        account_budget.amount_served_micros
+      FROM account_budget
+      WHERE account_budget.status = APPROVED
+    `)
+    const budget = pickCurrentBudget(budgetRows.map((r: { accountBudget: GoogleAccountBudget }) => r.accountBudget))
+    const spendCap = microsToCurrency(budget?.adjustedSpendingLimitMicros) ?? microsToCurrency(budget?.approvedSpendingLimitMicros)
+    const amountServed = microsToCurrency(budget?.amountServedMicros)
+    // Limite finito = conta com saldo/orçamento (o saldo é o que falta gastar do limite).
+    // Sem limite (INFINITE) = pagamento automático no cartão: o Google não informa saldo.
+    const finite = !!budget && spendCap != null
+
+    const campaignRows = await googleSearch(account, accessToken, `SELECT campaign.primary_status FROM campaign WHERE campaign.status = ENABLED`)
+    const hasLiveCampaigns = campaignRows.some(
+      (r: { campaign: { primaryStatus?: string } }) => !['ENDED', 'PENDING', 'PAUSED', 'REMOVED'].includes(r.campaign.primaryStatus || '')
     )
 
-    const budget = budgetRes.data?.results?.[0]?.accountBudget
-    const adjustedLimit = microsToCurrency(budget?.adjustedSpendingLimitMicros)
-    const approvedLimit = microsToCurrency(budget?.approvedSpendingLimitMicros)
-    const amountServed = microsToCurrency(budget?.amountServedMicros)
-    const spendCap = adjustedLimit ?? approvedLimit
-    const balance =
-      spendCap != null && amountServed != null
-        ? Math.max(spendCap - amountServed, 0)
-        : null
-    const limitType = budget?.adjustedSpendingLimitType || budget?.approvedSpendingLimitType
+    const status = mapGoogleStatus(customer?.status)
+    const adsStopped = status === 1 && hasLiveCampaigns && (await googleAdsStoppedYesterday(adAccountId))
 
     await prisma.adAccount.update({
       where: { id: adAccountId },
       data: {
-        balance,
+        balance: finite && amountServed != null ? Math.max(spendCap - amountServed, 0) : null,
         amountSpent: amountServed,
-        spendCap,
+        spendCap: finite ? spendCap : null,
         currency: customer?.currencyCode || null,
-        accountStatus: mapGoogleStatus(customer?.status),
-        fundingType: budget ? 'monthly_invoicing' : null,
-        fundingDisplay: budget
-          ? `${budget.name || 'Orcamento da conta'} (${limitType || 'limite finito'})`
-          : 'A API do Google Ads nao expoe saldo pre-pago/cartao; somente billing mensal quando disponivel.',
+        // 3 = anúncios parados (mesmo código do "pagamento pendente" do Meta): o Google não expõe
+        // "cartão recusado" na API — o que aparece é a conta parar de veicular com campanhas ativas
+        accountStatus: adsStopped ? 3 : status,
+        fundingType: !budget ? 'google_limited' : finite ? 'google_budget' : 'google_unlimited',
+        fundingDisplay: !budget
+          ? 'Sem orçamento de conta aprovado no Google Ads'
+          : finite
+            ? `${budget.name || 'Orçamento da conta'} · limite ${formatCurrency(spendCap)}`
+            : 'Sem limite de gasto — o Google não informa saldo',
         balanceLastSync: new Date(),
       },
     })

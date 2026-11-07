@@ -5,7 +5,8 @@ import { formatCurrency } from './utils'
 const LOW_BALANCE_THRESHOLD = 100  // R$
 const ALERT_COOLDOWN_HOURS = 24    // não alertar a mesma conta mais de 1x por 24h
 
-// Percorre todas as contas pré-pagas, alerta clientes cujo saldo caiu abaixo do limite.
+// Percorre todas as contas com saldo (Meta pré-paga e Google com limite de gasto),
+// alerta clientes cujo saldo caiu abaixo do limite.
 // Respeita cooldown de 24h pra não floodar o WhatsApp do cliente.
 // Retorna lista de alertas enviados.
 export async function checkAndAlertLowBalances(): Promise<{
@@ -15,9 +16,11 @@ export async function checkAndAlertLowBalances(): Promise<{
 }> {
   const accounts = await prisma.adAccount.findMany({
     where: {
-      platform: 'META',
       active: true,
-      fundingType: 'prepaid',
+      OR: [
+        { platform: 'META', fundingType: 'prepaid' },
+        { platform: 'GOOGLE', fundingType: 'google_budget' }, // saldo = limite do orçamento − gasto
+      ],
       balance: { not: null, lt: LOW_BALANCE_THRESHOLD },
     },
     include: {
@@ -123,7 +126,32 @@ export async function checkAndAlertLowBalances(): Promise<{
 // Status do Meta que indicam problema de PAGAMENTO:
 // 3 = UNSETTLED (cobrança recusada/pendente — anúncios PAUSADOS pelo Meta)
 // 9 = IN_GRACE_PERIOD (falha na cobrança — período de carência, vai pausar em breve)
+// No Google, 3 = anúncios parados com campanhas ativas (ver refreshGoogleAccountFinancials:
+// a API do Google não informa cartão recusado, só que a conta parou de veicular).
 const PAYMENT_ISSUE_STATUSES = [3, 9]
+
+function paymentIssueMessage(platform: string, accountName: string, status: number | null): string {
+  if (platform === 'GOOGLE') {
+    return `🚨 *Anúncios do Google Pararam de Rodar*\n\n` +
+      `Olá! Os anúncios da conta abaixo no *Google Ads* não tiveram nenhuma exibição ontem, mesmo com as campanhas ativas:\n\n` +
+      `🏢 Conta: *${accountName}*\n` +
+      `❌ Motivo mais comum: cobrança no cartão recusada ou não processada\n\n` +
+      `Verifique no Google Ads em *Faturamento → Resumo* se há pagamento pendente ou atualize o cartão cadastrado.\n\n` +
+      `Podemos te ajudar a resolver agora? Quanto antes regularizar, antes os anúncios voltam a rodar. 🚀`
+  }
+  return status === 3
+    ? `🚨 *Anúncios Pausados — Pagamento Pendente*\n\n` +
+      `Olá! Identificamos que a conta de anúncios abaixo está com um *pagamento pendente* e o Meta *pausou os anúncios*:\n\n` +
+      `🏢 Conta: *${accountName}*\n` +
+      `❌ Motivo: cobrança no cartão recusada ou não processada\n\n` +
+      `Para reativar as campanhas, é preciso regularizar o pagamento no Gerenciador de Anúncios em *Configurações de pagamento* (pagar o valor pendente ou atualizar o cartão cadastrado).\n\n` +
+      `Podemos te ajudar a resolver agora? Quanto antes regularizar, antes os anúncios voltam a rodar. 🚀`
+    : `⚠️ *Atenção — Falha na Cobrança do Cartão*\n\n` +
+      `Olá! O Meta tentou realizar a cobrança da conta de anúncios abaixo e o pagamento *não foi aprovado*:\n\n` +
+      `🏢 Conta: *${accountName}*\n\n` +
+      `Os anúncios ainda estão rodando, mas *serão pausados em breve* se o pagamento não for regularizado no Gerenciador de Anúncios (*Configurações de pagamento*).\n\n` +
+      `Recomendamos verificar o cartão cadastrado o quanto antes. Precisa de ajuda?`
+}
 
 // Alerta o cliente quando a conta foi pausada (ou está prestes a pausar) por erro
 // de pagamento no cartão/fatura — estilo notificação do próprio Meta Ads.
@@ -135,9 +163,11 @@ export async function checkAndAlertPaymentIssues(): Promise<{
 }> {
   const accounts = await prisma.adAccount.findMany({
     where: {
-      platform: 'META',
       active: true,
-      accountStatus: { in: PAYMENT_ISSUE_STATUSES },
+      OR: [
+        { platform: 'META', accountStatus: { in: PAYMENT_ISSUE_STATUSES } },
+        { platform: 'GOOGLE', accountStatus: 3 },
+      ],
     },
     include: {
       client: { select: { id: true, name: true, company: true, whatsappGroup: true, alertsEnabled: true } },
@@ -175,19 +205,7 @@ export async function checkAndAlertPaymentIssues(): Promise<{
 
   let sentCount = 0
   for (const account of eligible) {
-    const isPaused = account.accountStatus === 3
-    const message = isPaused
-      ? `🚨 *Anúncios Pausados — Pagamento Pendente*\n\n` +
-        `Olá! Identificamos que a conta de anúncios abaixo está com um *pagamento pendente* e o Meta *pausou os anúncios*:\n\n` +
-        `🏢 Conta: *${account.accountName}*\n` +
-        `❌ Motivo: cobrança no cartão recusada ou não processada\n\n` +
-        `Para reativar as campanhas, é preciso regularizar o pagamento no Gerenciador de Anúncios em *Configurações de pagamento* (pagar o valor pendente ou atualizar o cartão cadastrado).\n\n` +
-        `Podemos te ajudar a resolver agora? Quanto antes regularizar, antes os anúncios voltam a rodar. 🚀`
-      : `⚠️ *Atenção — Falha na Cobrança do Cartão*\n\n` +
-        `Olá! O Meta tentou realizar a cobrança da conta de anúncios abaixo e o pagamento *não foi aprovado*:\n\n` +
-        `🏢 Conta: *${account.accountName}*\n\n` +
-        `Os anúncios ainda estão rodando, mas *serão pausados em breve* se o pagamento não for regularizado no Gerenciador de Anúncios (*Configurações de pagamento*).\n\n` +
-        `Recomendamos verificar o cartão cadastrado o quanto antes. Precisa de ajuda?`
+    const message = paymentIssueMessage(account.platform, account.accountName, account.accountStatus)
 
     try {
       await sendTextMessage(account.client.whatsappGroup!, message)

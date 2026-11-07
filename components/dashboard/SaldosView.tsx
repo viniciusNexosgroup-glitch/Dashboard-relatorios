@@ -40,8 +40,14 @@ interface Props {
 
 const LOW_BALANCE_THRESHOLD = 100
 
-const statusLabel = (s: number | null) =>
-  s === 1 ? 'Ativa' : s === 2 ? 'Desativada' : s === 3 ? 'Pagamento pendente' : s === 7 ? 'Bloqueada' : s === 9 ? 'Falha na cobrança' : 'Desconhecida'
+// No Google, 3 = anúncios parados com campanhas ativas (a API não informa cartão recusado)
+const statusLabel = (s: number | null, platform: Account['platform']) =>
+  s === 1 ? 'Ativa'
+    : s === 2 ? 'Desativada'
+    : s === 3 ? (platform === 'GOOGLE' ? 'Anúncios parados' : 'Pagamento pendente')
+    : s === 7 ? (platform === 'GOOGLE' ? 'Suspensa' : 'Bloqueada')
+    : s === 9 ? 'Falha na cobrança'
+    : 'Desconhecida'
 
 const statusColor = (s: number | null) =>
   s === 1 ? 'bg-green-100 text-green-700' : s === 3 || s === 9 ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
@@ -51,10 +57,13 @@ const fundingLabel: Record<string, string> = {
   credit_card: 'Cartão de crédito',
   extended_credit: 'Linha de crédito',
   monthly_invoicing: 'Faturamento mensal',
+  google_budget: 'Saldo (limite da conta)',
+  google_unlimited: 'Pagamento automático',
   google_limited: 'Google limitado',
 }
 
-const isPrepaid = (ft: string | null) => ft === 'prepaid'
+// Contas com saldo monitorado: Meta pré-paga e Google com limite de gasto (saldo = limite − gasto)
+const isPrepaid = (ft: string | null) => ft === 'prepaid' || ft === 'google_budget'
 const hasBalanceLikeValue = (a: Account) => isPrepaid(a.fundingType) || a.fundingType === 'monthly_invoicing'
 
 type Filter = 'all' | 'prepaid' | 'postpaid'
@@ -163,15 +172,15 @@ export function SaldosView({ accounts }: Props) {
           </div>
           <div className="flex-1">
             <h3 className="font-bold text-red-800 text-base">
-              {paymentIssueAccounts.length} {paymentIssueAccounts.length === 1 ? 'conta com pagamento pendente' : 'contas com pagamento pendente'}
+              {paymentIssueAccounts.length} {paymentIssueAccounts.length === 1 ? 'conta com problema de pagamento' : 'contas com problema de pagamento'}
             </h3>
             <p className="text-sm text-red-700 mt-1">
-              O Meta não conseguiu processar a cobrança {paymentIssueAccounts.length === 1 ? 'da conta abaixo' : 'das contas abaixo'} —
-              os anúncios {paymentIssueAccounts.length === 1 ? 'foram pausados (ou serão em breve)' : 'foram pausados (ou serão em breve)'}.
-              Regularize o pagamento no Gerenciador de Anúncios:
+              Meta: a cobrança não foi processada e os anúncios foram pausados (ou serão em breve).
+              Google: os anúncios não tiveram nenhuma exibição ontem com campanhas ativas — geralmente cartão recusado.
+              Regularize o pagamento na plataforma:
             </p>
             <p className="text-sm font-semibold text-red-800 mt-1.5">
-              {paymentIssueAccounts.map((a) => a.accountName).join(' · ')}
+              {paymentIssueAccounts.map((a) => `${a.accountName} (${a.platform === 'META' ? 'Meta' : 'Google'})`).join(' · ')}
             </p>
           </div>
         </div>
@@ -200,7 +209,7 @@ export function SaldosView({ accounts }: Props) {
           <div>
             <h3 className="font-bold text-green-800 text-base">Tudo certo</h3>
             <p className="text-sm text-green-700 mt-0.5">
-              Nenhuma conta pré-paga com saldo baixo e nenhum pagamento pendente.
+              Nenhuma conta com saldo baixo e nenhum problema de pagamento (Meta e Google).
             </p>
           </div>
         </div>
@@ -295,7 +304,7 @@ export function SaldosView({ accounts }: Props) {
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(a.accountStatus)}`}>
-                        {statusLabel(a.accountStatus)}
+                        {statusLabel(a.accountStatus, a.platform)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
@@ -323,7 +332,8 @@ export function SaldosView({ accounts }: Props) {
       </div>
 
       <p className="text-xs text-gray-500 text-center">
-        Apenas contas <strong>pré-pagas</strong> têm saldo monitorado. Atualização automática nos horários do cron (08:00, 14:00, 20:00).
+        Saldo monitorado: contas Meta <strong>pré-pagas</strong> e contas Google <strong>com limite de gasto</strong>. Contas Google em
+        pagamento automático não têm saldo na API — o aviso é quando os anúncios param de rodar. Atualização automática nos horários do cron (08:00, 14:00, 20:00).
       </p>
     </div>
   )
