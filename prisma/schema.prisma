@@ -68,6 +68,9 @@ model AdAccount {
   accessToken     String
   refreshToken    String?
   tokenExpiresAt  DateTime?
+  // Google Ads: MCC usada no header login-customer-id quando a conta só é acessível via MCC
+  // (vinculada à MCC, sem acesso direto do login). null = acesso direto.
+  loginCustomerId String?
   active          Boolean         @default(true)
   // Financials snapshot — atualizado a cada sync
   balance         Float?

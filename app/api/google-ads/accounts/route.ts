@@ -14,7 +14,10 @@ type Account = {
   currency: string
   status: string
   isManager: boolean
+  managerId?: string // MCC para o login-customer-id (conta acessível só via MCC)
 }
+
+const formatCustomerId = (cid: string) => cid.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')
 
 function getGoogleAdsErrorMessage(err: unknown): string {
   if (!axios.isAxiosError(err)) {
@@ -163,6 +166,39 @@ export async function GET() {
         })
       )
       for (const r of results) if (r) accounts.push(r)
+    }
+
+    // 3. Contas vinculadas a uma MCC sem acesso direto do login (ex: conta adicionada à MCC
+    //    da agência) não vêm no listAccessibleCustomers — busca as sub-contas de cada MCC.
+    //    No sync elas precisam da MCC no login-customer-id (gravada em AdAccount.loginCustomerId).
+    const knownIds = new Set(accounts.map((a) => a.id))
+    for (const mcc of accounts.filter((a) => a.isManager)) {
+      try {
+        const r = await axios.post(
+          `${GOOGLE_ADS_API}/customers/${mcc.id}/googleAds:search`,
+          {
+            query: `SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.status FROM customer_client WHERE customer_client.level >= 1 AND customer_client.manager = FALSE`,
+          },
+          { headers: { ...baseHeaders, 'login-customer-id': mcc.id }, timeout: 15_000 }
+        )
+        for (const row of r.data?.results || []) {
+          const c = row.customerClient
+          const cid = String(c.id)
+          if (knownIds.has(cid)) continue
+          knownIds.add(cid)
+          accounts.push({
+            id: cid,
+            formattedId: formatCustomerId(cid),
+            name: c.descriptiveName || `Conta ${formatCustomerId(cid)}`,
+            currency: c.currencyCode || 'BRL',
+            status: c.status || 'ENABLED',
+            isManager: false,
+            managerId: mcc.id,
+          })
+        }
+      } catch (e) {
+        console.warn(`[google-ads/accounts] sub-contas da MCC ${mcc.formattedId} indisponíveis:`, getGoogleAdsErrorMessage(e))
+      }
     }
 
     // Filtra contas canceladas e MCCs (a menos que queira sincronizar MCC direto)

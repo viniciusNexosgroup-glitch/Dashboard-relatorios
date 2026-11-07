@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
         accountName: body.accountName,
         accessToken,
         refreshToken,
+        loginCustomerId: body.platform === 'GOOGLE' ? body.loginCustomerId || null : null,
       },
     })
     return NextResponse.json(account)

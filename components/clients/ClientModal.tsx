@@ -35,6 +35,7 @@ interface GoogleAccount {
   name: string
   currency: string
   status: string
+  managerId?: string // conta acessível só via MCC
 }
 
 interface WhatsappGroup {
@@ -187,7 +188,7 @@ export function ClientModal({ client, onClose, onSave }: Props) {
         if (!acc) continue
         await fetch('/api/ad-accounts', {
           method: 'POST',
-          body: JSON.stringify({ clientId: targetClientId, platform: 'GOOGLE', accountId: acc.id, accountName: acc.name, accessToken: '__system__', refreshToken: '__system__' }),
+          body: JSON.stringify({ clientId: targetClientId, platform: 'GOOGLE', accountId: acc.id, accountName: acc.name, accessToken: '__system__', refreshToken: '__system__', loginCustomerId: acc.managerId ?? null }),
           headers: { 'Content-Type': 'application/json' },
         })
       }

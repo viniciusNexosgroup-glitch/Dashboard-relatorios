@@ -28,8 +28,10 @@ function getGoogleLoginCustomerId(): string | undefined {
   return process.env.GOOGLE_MANAGER_CUSTOMER_ID?.replace(/-/g, '')
 }
 
-function getGoogleHeaders(accessToken: string): Record<string, string> {
-  const loginCustomerId = getGoogleLoginCustomerId()
+// accountLoginCustomerId: MCC gravada na conta (contas acessíveis só via MCC). Sem ela,
+// cai no GOOGLE_MANAGER_CUSTOMER_ID do .env (ou nenhum header, para acesso direto).
+function getGoogleHeaders(accessToken: string, accountLoginCustomerId?: string | null): Record<string, string> {
+  const loginCustomerId = accountLoginCustomerId || getGoogleLoginCustomerId()
   return {
     Authorization: `Bearer ${accessToken}`,
     'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN || '',
@@ -123,7 +125,7 @@ export async function fetchGoogleSearchTerms(
     const res = await googleApi.post(
       `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
       { query, ...(pageToken ? { pageToken } : {}) },
-      { headers: getGoogleHeaders(accessToken) }
+      { headers: getGoogleHeaders(accessToken, account.loginCustomerId) }
     )
     for (const row of res.data.results || []) {
       const term = String(row.searchTermView?.searchTerm || '').trim()
@@ -233,7 +235,7 @@ export async function syncGoogleAccount(adAccountId: string, syncDays = 7) {
       `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,
       { query },
       {
-        headers: getGoogleHeaders(accessToken),
+        headers: getGoogleHeaders(accessToken, account.loginCustomerId),
       }
     )
 
@@ -346,7 +348,7 @@ export async function refreshGoogleAccountFinancials(adAccountId: string): Promi
 
   const accessToken = await getGoogleAdsAccessToken(refreshToken)
   const customerId = account.accountId.replace(/-/g, '')
-  const headers = getGoogleHeaders(accessToken)
+  const headers = getGoogleHeaders(accessToken, account.loginCustomerId)
 
   const customerRes = await googleApi.post(
     `${GOOGLE_API_BASE}/customers/${customerId}/googleAds:search`,

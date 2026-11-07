@@ -53,6 +53,7 @@ export const adAccountSchema = z.object({
   accountName: z.string().trim().min(1).max(200),
   accessToken: z.string().trim().min(1).max(1000),
   refreshToken: z.string().trim().min(1).max(1000).optional(),
+  loginCustomerId: z.string().regex(/^\d{10}$/).optional().nullable(), // Google: MCC da conta (acesso só via MCC)
 })
 
 // GET /api/metrics
