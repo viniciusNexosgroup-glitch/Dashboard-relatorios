@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isCronAuthorized } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { syncMetaAccount } from '@/lib/meta-ads'
 import { syncGoogleAccount } from '@/lib/google-ads'
@@ -8,8 +9,7 @@ export const maxDuration = 300
 // Called by cron at 08:00, 14:00, 20:00
 // Protect with a secret header: Authorization: Bearer CRON_SECRET
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isCronAuthorized } from '@/lib/auth'
 import { sendMonthlyReports } from '@/lib/monthly-report'
 
 export const maxDuration = 300
@@ -9,8 +10,7 @@ export const maxDuration = 300
 // continua de onde parou. O cron in-process (dias 1-3, 09:30) chama a mesma
 // função DIRETO, sem HTTP — sem limite de tempo.
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

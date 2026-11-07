@@ -34,11 +34,12 @@ Preencha no mínimo:
 # Criar tabelas no banco
 npm run db:push
 
-# Criar usuário admin inicial
+# Criar usuário admin inicial (defina a senha no .env antes: ADMIN_PASSWORD, mínimo 12 caracteres)
 npm run db:seed
 ```
 
-Login inicial: `admin@agencia.com` / `admin123`
+Login inicial: o e-mail de `ADMIN_EMAIL` (padrão `admin@agencia.com`) com a senha de `ADMIN_PASSWORD`.
+Troque a senha em **Configurações** depois do primeiro acesso. Nunca coloque senhas ou chaves neste arquivo: o repositório é público.
 
 ### 3. Rodar o projeto
 

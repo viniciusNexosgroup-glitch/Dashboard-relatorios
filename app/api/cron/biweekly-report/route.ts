@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isCronAuthorized } from '@/lib/auth'
 import { sendBiweeklyReports } from '@/lib/monthly-report'
 
 export const maxDuration = 300
@@ -8,8 +9,7 @@ export const maxDuration = 300
 // request for cortado no timeout, basta chamar de novo. O cron in-process
 // (dias 16-18, 09:30) chama a mesma função DIRETO, sem HTTP.
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

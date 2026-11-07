@@ -46,3 +46,10 @@ export const authOptions: NextAuthOptions = {
     },
   },
 }
+
+// Rotas /api/cron/*: exige CRON_SECRET configurado. Sem ele, comparar com
+// `Bearer ${process.env.CRON_SECRET}` aceitaria o header literal "Bearer undefined".
+export function isCronAuthorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET
+  return !!secret && req.headers.get('authorization') === `Bearer ${secret}`
+}
