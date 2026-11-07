@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronUp, Download, Loader2, RefreshCw, Send } from 'lucide-react'
+import { AlertTriangle, Download, Loader2, RefreshCw, Send } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 type Period = 'last7full' | 'thisMonth' | 'lastMonth'
+type Filter = 'all' | 'included' | 'excluded'
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: 'last7full', label: 'Últimos 7 dias' },
@@ -24,6 +25,7 @@ const qualityColor: Record<string, string> = {
 interface Row {
   clientId: string
   company: string
+  included: boolean
   quality: string | null
   activeWhatsapp: number | null
   activeInstagram: number | null
@@ -36,7 +38,6 @@ interface Row {
 }
 
 interface Props {
-  clients: { id: string; company: string; momentEnabled: boolean }[]
   group: { id: string; name: string } | null
 }
 
@@ -55,16 +56,14 @@ async function fetchMoment(period: Period): Promise<{ rows: Row[]; range: { star
   }
 }
 
-export function MomentoView({ clients: initialClients, group: initialGroup }: Props) {
+export function MomentoView({ group: initialGroup }: Props) {
   const [period, setPeriod] = useState<Period>('last7full')
   const [reloadKey, setReloadKey] = useState(0)
   const [rows, setRows] = useState<Row[]>([])
   const [range, setRange] = useState<{ start: string; end: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const [clients, setClients] = useState(initialClients)
-  const [showClients, setShowClients] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
 
   const [group, setGroup] = useState(initialGroup)
   const [groups, setGroups] = useState<{ id: string; name: string }[] | null>(null)
@@ -107,22 +106,18 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
     if (!res.ok) throw new Error((await res.json()).error || 'Erro ao salvar')
   }
 
-  async function changeQuality(clientId: string, quality: string) {
-    const value = quality || null
-    setRows((rs) => rs.map((r) => (r.clientId === clientId ? { ...r, quality: value } : r)))
+  // Atualiza a linha na hora e salva; se falhar, desfaz e avisa
+  async function updateRow(clientId: string, change: Partial<Pick<Row, 'included' | 'quality'>>) {
+    const before = rows.find((r) => r.clientId === clientId)
+    setRows((rs) => rs.map((r) => (r.clientId === clientId ? { ...r, ...change } : r)))
     try {
-      await patch({ clientId, creativeQuality: value })
+      await patch({
+        clientId,
+        ...('included' in change ? { momentEnabled: change.included } : {}),
+        ...('quality' in change ? { creativeQuality: change.quality } : {}),
+      })
     } catch (e) {
-      setNotice({ ok: false, text: errorMessage(e) })
-    }
-  }
-
-  async function toggleClient(clientId: string, momentEnabled: boolean) {
-    setClients((cs) => cs.map((c) => (c.id === clientId ? { ...c, momentEnabled } : c)))
-    try {
-      await patch({ clientId, momentEnabled })
-      reload()
-    } catch (e) {
+      if (before) setRows((rs) => rs.map((r) => (r.clientId === clientId ? before : r)))
       setNotice({ ok: false, text: errorMessage(e) })
     }
   }
@@ -152,7 +147,7 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
 
   async function sendNow() {
     if (!group || sending) return
-    if (!confirm(`Enviar agora a tabela dos últimos 7 dias para "${group.name}"?`)) return
+    if (!confirm(`Enviar agora a tabela dos últimos 7 dias (${includedCount} lojas selecionadas) para "${group.name}"?`)) return
     setSending(true)
     setNotice(null)
     try {
@@ -166,14 +161,16 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
     setSending(false)
   }
 
-  const enabledCount = clients.filter((c) => c.momentEnabled).length
+  const includedCount = rows.filter((r) => r.included).length
+  const visible = rows.filter((r) => (filter === 'all' ? true : filter === 'included' ? r.included : !r.included))
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Momento do Cliente</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Criativos ativos, custo por lead das campanhas de mensagens e qualidade dos criativos por loja
+          Criativos ativos, custo por lead das campanhas de mensagens e qualidade dos criativos por loja.
+          Marque quais lojas entram no relatório enviado ao grupo.
         </p>
       </div>
 
@@ -196,7 +193,7 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
             </select>
           ) : (
             <p className="text-sm text-gray-500">
-              Últimos 7 dias completos (quarta a terça), em PDF, para{' '}
+              Últimos 7 dias completos (quarta a terça), em PDF, só com as lojas selecionadas, para{' '}
               {group ? <span className="font-medium text-gray-800">{group.name}</span> : <span className="text-red-600">nenhum grupo configurado</span>}
               {' · '}
               <button onClick={openGroupPicker} className="text-indigo-600 hover:underline">alterar</button>
@@ -205,7 +202,7 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
         </div>
         <button
           onClick={sendNow}
-          disabled={!group || sending}
+          disabled={!group || sending || loading}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -256,12 +253,34 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
         </div>
       </div>
 
+      {/* Filtro: todas / selecionadas / fora do relatório */}
+      {!loading && !error && (
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { value: 'all', label: 'Todas', count: rows.length },
+            { value: 'included', label: 'Selecionadas', count: includedCount },
+            { value: 'excluded', label: 'Fora do relatório', count: rows.length - includedCount },
+          ] as { value: Filter; label: string; count: number }[]).map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                filter === f.value ? 'bg-gray-800 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {f.label} <span className={`ml-1 text-xs ${filter === f.value ? 'text-gray-300' : 'text-gray-400'}`}>({f.count})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tabela */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">No relatório</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Loja</th>
                 <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Criativos WhatsApp</th>
                 <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wide">Criativos Instagram</th>
@@ -272,7 +291,7 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={5} className="text-center text-gray-400 py-10">
+                  <td colSpan={6} className="text-center text-gray-400 py-10">
                     <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
                     Consultando os criativos ativos no Meta…
                   </td>
@@ -280,20 +299,30 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
               )}
               {!loading && error && (
                 <tr>
-                  <td colSpan={5} className="text-center text-red-600 py-8">{error}</td>
+                  <td colSpan={6} className="text-center text-red-600 py-8">{error}</td>
                 </tr>
               )}
-              {!loading && !error && rows.length === 0 && (
+              {!loading && !error && visible.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center text-gray-400 py-8">
-                    Nenhuma loja no relatório. Marque as lojas em &quot;Lojas no relatório&quot; abaixo.
-                  </td>
+                  <td colSpan={6} className="text-center text-gray-400 py-8">Nenhuma loja neste filtro.</td>
                 </tr>
               )}
-              {!loading && !error && rows.map((r) => (
-                <tr key={r.clientId} className="border-b border-gray-50 hover:bg-gray-50">
+              {!loading && !error && visible.map((r) => (
+                <tr
+                  key={r.clientId}
+                  className={`border-b border-gray-50 transition-colors ${r.included ? 'hover:bg-gray-50' : 'bg-gray-50/60 text-gray-400'}`}
+                >
+                  <td className="py-3 px-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={r.included}
+                      onChange={(e) => updateRow(r.clientId, { included: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 cursor-pointer"
+                      title={r.included ? 'Tirar do relatório' : 'Incluir no relatório'}
+                    />
+                  </td>
                   <td className="py-3 px-4">
-                    <p className="font-medium text-gray-800">{r.company}</p>
+                    <p className={`font-medium ${r.included ? 'text-gray-800' : 'text-gray-500'}`}>{r.company}</p>
                     {r.error && (
                       <p className="text-xs text-red-600 mt-0.5 flex items-center gap-1" title={r.error}>
                         <AlertTriangle className="w-3 h-3" /> Meta indisponível para esta conta
@@ -301,17 +330,17 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
                     )}
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className="font-semibold text-gray-900">{r.activeWhatsapp ?? '—'}</span>
+                    <span className={`font-semibold ${r.included ? 'text-gray-900' : ''}`}>{r.activeWhatsapp ?? '—'}</span>
                     <span className="text-xs text-gray-400 ml-1">({r.ranWhatsapp} no período)</span>
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className="font-semibold text-gray-900">{r.activeInstagram ?? '—'}</span>
+                    <span className={`font-semibold ${r.included ? 'text-gray-900' : ''}`}>{r.activeInstagram ?? '—'}</span>
                     <span className="text-xs text-gray-400 ml-1">({r.ranInstagram} no período)</span>
                   </td>
                   <td className="py-3 px-4 text-center">
                     {r.cpl != null ? (
                       <>
-                        <p className="font-semibold text-gray-900">{formatCurrency(r.cpl)}</p>
+                        <p className={`font-semibold ${r.included ? 'text-gray-900' : ''}`}>{formatCurrency(r.cpl)}</p>
                         <p className="text-xs text-gray-400">
                           {formatCurrency(r.spend)} ÷ {r.conversations.toLocaleString('pt-BR')} conversas
                         </p>
@@ -323,7 +352,7 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
                   <td className="py-3 px-4 text-center">
                     <select
                       value={r.quality || ''}
-                      onChange={(e) => changeQuality(r.clientId, e.target.value)}
+                      onChange={(e) => updateRow(r.clientId, { quality: e.target.value || null })}
                       className={`border rounded-lg px-2 py-1 text-sm font-semibold ${
                         r.quality ? qualityColor[r.quality] : 'text-gray-400 border-gray-300'
                       }`}
@@ -342,35 +371,10 @@ export function MomentoView({ clients: initialClients, group: initialGroup }: Pr
       </div>
 
       <p className="text-xs text-gray-500 text-center">
-        Criativos: ativos agora no Gerenciador (entre parênteses, quantos rodaram no período). Custo por lead: só campanhas de
-        mensagens (WhatsApp) — visibilidade no perfil do Instagram não entra. Qualidade: avaliação do gestor, salva na hora.
+        {includedCount} de {rows.length} lojas selecionadas para o relatório (PDF e envio de quarta). Criativos: ativos agora no
+        Gerenciador (entre parênteses, quantos rodaram no período). Custo por lead: só campanhas de mensagens (WhatsApp).
+        Seleção e qualidade são salvas na hora.
       </p>
-
-      {/* Lojas no relatório */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <button
-          onClick={() => setShowClients((s) => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-800"
-        >
-          Lojas no relatório ({enabledCount} de {clients.length})
-          {showClients ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
-        {showClients && (
-          <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
-            {clients.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700 py-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={c.momentEnabled}
-                  onChange={(e) => toggleClient(c.id, e.target.checked)}
-                  className="rounded border-gray-300 text-indigo-600"
-                />
-                {c.company}
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

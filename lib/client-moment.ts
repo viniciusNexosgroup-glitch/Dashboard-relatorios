@@ -39,6 +39,7 @@ export function formatMomentDay(d: Date): string {
 export interface MomentRow {
   clientId: string
   company: string
+  included: boolean // selecionada para o relatório (PDF / envio de quarta)
   quality: string | null
   activeWhatsapp: number | null // null = não foi possível consultar o Meta agora
   activeInstagram: number | null
@@ -53,12 +54,15 @@ export interface MomentRow {
 const isWhatsapp = (dest: string | null | undefined) => !!dest && dest.includes('WHATSAPP')
 const isInstagramProfile = (dest: string | null | undefined) => dest === 'INSTAGRAM_PROFILE'
 
-export async function buildClientMoment(start: Date, end: Date): Promise<MomentRow[]> {
+// A aba mostra todos os clientes ativos (cada um com o seu "incluir no relatório");
+// o PDF e o envio de quarta usam onlyIncluded para levar só as lojas selecionadas.
+export async function buildClientMoment(start: Date, end: Date, { onlyIncluded = false } = {}): Promise<MomentRow[]> {
   const clients = await prisma.client.findMany({
-    where: { active: true, momentEnabled: true },
+    where: { active: true, ...(onlyIncluded ? { momentEnabled: true } : {}) },
     select: {
       id: true,
       company: true,
+      momentEnabled: true,
       creativeQuality: true,
       adAccounts: { where: { platform: 'META', active: true }, select: { id: true } },
     },
@@ -131,6 +135,7 @@ export async function buildClientMoment(start: Date, end: Date): Promise<MomentR
       return {
         clientId: c.id,
         company: c.company.trim(),
+        included: c.momentEnabled,
         quality: c.creativeQuality,
         activeWhatsapp: failed ? null : a.whatsapp,
         activeInstagram: failed ? null : a.instagram,
@@ -166,7 +171,7 @@ export async function setMomentGroup(group: { id: string; name: string }): Promi
 
 export async function buildClientMomentPDF(period: MomentPeriod) {
   const { start, end } = getMomentRange(period)
-  const rows = await buildClientMoment(start, end)
+  const rows = await buildClientMoment(start, end, { onlyIncluded: true })
   const pdf = await generateClientMomentPDF(rows, { start, end, periodLabel: MOMENT_PERIOD_LABEL[period] })
   return { pdf, rows, start, end, filename: `momento-do-cliente-${start.toISOString().slice(0, 10)}.pdf` }
 }
