@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, MessageSquare, Key, Clock, Info, KeyRound, Loader2 } from 'lucide-react'
 import { ChangePasswordCard } from './ChangePasswordCard'
@@ -12,13 +12,20 @@ interface Props {
   googleConnectedAt?: string | null
   googleEnv?: { clientId: boolean; clientSecret: boolean; developerToken: boolean }
   metaTokenExpiresAt?: string | null
+  metaLoginNotice?: { ok: boolean; text: string } | null
+  metaRedirectUri?: string
 }
 
-export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null, googleEnv, metaTokenExpiresAt = null }: Props) {
+export function ConfigView({ whatsappStatus, googleConnectedEmail = null, googleConnectedAt = null, googleEnv, metaTokenExpiresAt = null, metaLoginNotice = null, metaRedirectUri = '' }: Props) {
   const router = useRouter()
   const [newToken, setNewToken] = useState('')
   const [savingToken, setSavingToken] = useState(false)
-  const [tokenMsg, setTokenMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [tokenMsg, setTokenMsg] = useState<{ ok: boolean; text: string } | null>(metaLoginNotice)
+
+  // Mensagem da volta do "Renovar com Facebook" já foi lida — limpa a URL pra não repetir no F5
+  useEffect(() => {
+    if (metaLoginNotice) router.replace('/configuracoes', { scroll: false })
+  }, [metaLoginNotice, router])
 
   const tokenDaysLeft = metaTokenExpiresAt
     ? Math.floor((new Date(metaTokenExpiresAt).getTime() - Date.now()) / 86_400_000)
@@ -116,16 +123,40 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
         </div>
 
         <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-          Tokens de usuário do Meta duram no máximo <strong>60 dias</strong> e não renovam sozinhos.
-          Gere um novo no{' '}
-          <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-            Graph API Explorer
-          </a>{' '}
-          (selecione o app, gere o token de usuário com as permissões de anúncios) e cole abaixo —
-          o sistema troca por um token de 60 dias automaticamente. Você recebe um aviso no WhatsApp quando faltarem 10 dias.
+          Tokens de usuário do Meta duram no máximo <strong>60 dias</strong> e o Meta não deixa renová-los sozinhos.
+          Clique em <strong>Renovar com Facebook</strong>, entre com o seu Facebook e marque <strong>todas</strong> as empresas,
+          contas e permissões — o token novo de 60 dias é salvo na hora. Se o novo login não enxergar alguma conta de cliente,
+          o token atual é mantido. Você recebe um aviso no WhatsApp quando faltarem 10 dias.
         </p>
 
-        <div className="flex gap-2">
+        <a
+          href="/api/meta-ads/oauth/start"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#1877F2] text-white rounded-lg hover:bg-[#166FE5] transition-colors"
+        >
+          <KeyRound className="w-4 h-4" />
+          Renovar com Facebook
+        </a>
+
+        <details className="mt-3 text-xs text-gray-500">
+          <summary className="cursor-pointer text-gray-600 font-medium">Primeira vez? Configure o app do Meta (uma vez só)</summary>
+          <ol className="list-decimal ml-5 mt-2 space-y-1">
+            <li>
+              Abra o app em{' '}
+              <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                developers.facebook.com/apps
+              </a>{' '}
+              → <strong>Login do Facebook → Configurações</strong> (adicione o produto Login do Facebook se não existir).
+            </li>
+            <li>
+              Em <strong>URIs de redirecionamento do OAuth válidos</strong>, cole: <code className="bg-gray-100 px-1 rounded break-all">{metaRedirectUri}</code>
+            </li>
+            <li>Salve. Se o app usar “Login do Facebook para Empresas”, crie uma configuração com as permissões de anúncios e coloque o ID dela em META_LOGIN_CONFIG_ID no EasyPanel.</li>
+          </ol>
+        </details>
+
+        <details className="mt-2 text-xs text-gray-500">
+          <summary className="cursor-pointer text-gray-600 font-medium">Ou cole um token manualmente (Graph API Explorer)</summary>
+          <div className="flex gap-2 mt-2">
           <input
             type="password"
             value={newToken}
@@ -141,7 +172,8 @@ export function ConfigView({ whatsappStatus, googleConnectedEmail = null, google
             {savingToken && <Loader2 className="w-4 h-4 animate-spin" />}
             {savingToken ? 'Renovando...' : 'Salvar e renovar'}
           </button>
-        </div>
+          </div>
+        </details>
         {tokenMsg && (
           <p className={`text-xs mt-2 font-medium ${tokenMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
             {tokenMsg.ok ? '✓ ' : '✗ '}{tokenMsg.text}
