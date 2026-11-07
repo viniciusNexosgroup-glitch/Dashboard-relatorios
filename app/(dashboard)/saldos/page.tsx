@@ -3,7 +3,7 @@ import { SaldosView } from '@/components/dashboard/SaldosView'
 
 export default async function SaldosPage() {
   const accounts = await prisma.adAccount.findMany({
-    include: { client: { select: { name: true, company: true } } },
+    include: { client: { select: { name: true, company: true, alertsEnabled: true } } },
     orderBy: { balance: 'asc' },
   })
 
@@ -16,6 +16,7 @@ export default async function SaldosPage() {
         accountName: a.accountName,
         clientName: a.client?.company || null,
         clientResponsible: a.client?.name || null,
+        clientAlertsEnabled: a.client?.alertsEnabled ?? null,
         balance: a.balance,
         amountSpent: a.amountSpent,
         spendCap: a.spendCap,

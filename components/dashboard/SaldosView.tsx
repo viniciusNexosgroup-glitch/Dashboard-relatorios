@@ -21,6 +21,7 @@ interface Account {
   accountName: string
   clientName: string | null
   clientResponsible: string | null
+  clientAlertsEnabled: boolean | null
   balance: number | null
   amountSpent: number | null
   spendCap: number | null
@@ -67,6 +68,29 @@ const isPrepaid = (ft: string | null) => ft === 'prepaid' || ft === 'google_budg
 const hasBalanceLikeValue = (a: Account) => isPrepaid(a.fundingType) || a.fundingType === 'monthly_invoicing'
 
 type Filter = 'all' | 'prepaid' | 'postpaid'
+
+// Lista das contas dentro dos quadros de alerta: plataforma, cliente, saldo e se o aviso
+// automático no grupo do cliente está desligado (aí ninguém é avisado sem ação manual)
+function AlertAccountList({ accounts, showBalance }: { accounts: Account[]; showBalance?: boolean }) {
+  return (
+    <ul className="mt-2 space-y-1">
+      {accounts.map((a) => (
+        <li key={a.id} className="text-sm text-red-800 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="font-semibold">{a.accountName}</span>
+          <span className="text-xs text-red-600">
+            {a.platform === 'META' ? 'Meta' : 'Google'}{a.clientName ? ` · ${a.clientName}` : ''}
+          </span>
+          {showBalance && <span className="font-bold">{formatCurrency(a.balance ?? 0)}</span>}
+          {a.clientAlertsEnabled === false && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-white border border-red-200 text-red-600">
+              aviso no WhatsApp desligado
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export function SaldosView({ accounts }: Props) {
   const router = useRouter()
@@ -122,7 +146,7 @@ export function SaldosView({ accounts }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Saldos das Contas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Monitora contas pré-pagas para avisar clientes quando precisam adicionar saldo
+            Monitora saldo e pagamento das contas Meta e Google para avisar os clientes
           </p>
           {latestSync && (
             <p className="text-xs text-gray-400 mt-1">
@@ -179,9 +203,7 @@ export function SaldosView({ accounts }: Props) {
               Google: os anúncios não tiveram nenhuma exibição ontem com campanhas ativas — geralmente cartão recusado.
               Regularize o pagamento na plataforma:
             </p>
-            <p className="text-sm font-semibold text-red-800 mt-1.5">
-              {paymentIssueAccounts.map((a) => `${a.accountName} (${a.platform === 'META' ? 'Meta' : 'Google'})`).join(' · ')}
-            </p>
+            <AlertAccountList accounts={paymentIssueAccounts} />
           </div>
         </div>
       )}
@@ -199,6 +221,7 @@ export function SaldosView({ accounts }: Props) {
               {lowBalanceAccounts.length === 1 ? 'A conta abaixo está' : 'As contas abaixo estão'} com saldo menor que {formatCurrency(LOW_BALANCE_THRESHOLD)}.
               Avise {lowBalanceAccounts.length === 1 ? 'o cliente para adicionar saldo' : 'os clientes para adicionarem saldo'} antes que os anúncios pausem.
             </p>
+            <AlertAccountList accounts={[...lowBalanceAccounts].sort((x, y) => (x.balance ?? 0) - (y.balance ?? 0))} showBalance />
           </div>
         </div>
       ) : paymentIssueAccounts.length === 0 ? (
